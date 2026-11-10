@@ -1,43 +1,27 @@
-/*
-  SHY CAT: SINGLE BEHAVIOUR ENGINE + DIGITAL TWIN + FOUR STEPPER OUTPUTS
-
-  Wekinator -> /wek/outputs at OSC port 12000:
-     output 1 = Threat [0..1], output 2 = Engagement [0..1]
-  Python -> OSC port 12001:
-     /person/present  [0 or 1]
-     /person/features [12 floats: wrist X/Y first]
-  Processing -> Arduino USB serial 9600 baud:
-     A,stepsA,stepsB,stepsC,stepsD\n
-  This is ONE .pde file. Only ONE settings() exists.
-  Press B to connect to Arduino and start its sequential manual calibration.
-  During calibration: A=back, D=forward, S=stop, N=set zero/next.
-  After Arduino reports READY: press S to arm movement (S again disarms).
-  Keep the same serial connection open throughout.
-*/
-
 import oscP5.*;
 import netP5.*;
 import processing.serial.*;
 
-// ---------- PORTS ----------
+// communication ports
 final int WEK_OSC_PORT = 12000;
 final int PERSON_OSC_PORT = 12001;
 final String ARDUINO_PORT = "/dev/cu.usbmodem1401";
 final int ARDUINO_BAUD = 9600;
 final int SERIAL_SEND_INTERVAL_MS = 50;
 
-// ---------- PHYSICAL MOTION (must match Arduino) ----------
-final int[] MAX_OPEN_STEPS = {512, 341, 683, 512};
-// Set each sign to +1 or -1 depending on which direction OPENS its arm.
-// Initial values assume left arms open counterclockwise, right clockwise.
-final int[] MOTOR_DIRECTION = {-1, -1, +1, +1};
 
-// ---------- BEHAVIOUR TUNING ----------
+// change these values to fine tune the behaviour of the sculpture
+
+// MUST MATCH ARDUINO - determines how many steps from fully closed to fully open (steppers 1, 2, 3, 4)
+final int[] MAX_OPEN_STEPS = {512, 341, 683, 512};
+final int[] MOTOR_DIRECTION = {-1, -1, +1, +1}; // -1 = anticlockwise | +1 = clockwise
+
 final float TRUST_GAIN_PER_SECOND = 0.12;
 final float TRUST_LOSS_PER_SECOND = 0.40;
 final float TRUST_DECAY_UNOBSERVED = 0.04;
 final float MIMIC_START_TRUST = 0.75;
 final float MIMIC_FULL_TRUST = 0.95;
+
 final float STARTLE_DURATION_S = 1.3;
 final float THREAT_STARTLE_THRESHOLD = 0.72;
 final float IDLE_OPENNESS = 0.66;  // no person: timidly open, wandering
@@ -56,7 +40,7 @@ int calibratingMotor = 0; // 0 until first Arduino status, then 1..4
 String arduinoStatus = "NOT CONNECTED";
 int lastSerialSendMs = -100000;
 
-// ---------- NETWORK INPUT ----------
+// communication variables to help wekinator and python talk to processing
 final Object networkLock = new Object();
 float[] poseFeatures = new float[12];
 boolean rawPersonPresent = false;
@@ -65,7 +49,7 @@ int lastWekMs = -100000;
 float rawThreat = 0;
 float rawEngagement = 0;
 
-// ---------- STATE ----------
+// current state variables | DONT CHANGE!
 float threat = 0;
 float engagement = 0;
 float trust = 0;
@@ -74,12 +58,15 @@ float mimicStrength = 0;
 float startleRemaining = 0;
 float startleCooldown = 0;
 float previousThreat = 0;
+
 boolean wasPresent = false;
 boolean emergencyClosed = false;
+
 float[] openness = {0, 0, 0, 0};
 float[] targetOpenness = new float[4];
 float[] visualAngle = new float[4];
 int[] stepTargets = new int[4];
+
 String behaviouralState = "IDLE";
 int previousDrawMs = -1;
 
