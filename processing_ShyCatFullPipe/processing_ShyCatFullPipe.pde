@@ -9,8 +9,10 @@
   Processing -> Arduino USB serial 9600 baud:
      A,stepsA,stepsB,stepsC,stepsD\n
   This is ONE .pde file. Only ONE settings() exists.
-  First verify the digital twin; press S to arm serial output ONLY after
-  checking wiring, power and physical motor limits.
+  Press B to connect to Arduino and start its sequential manual calibration.
+  During calibration: A=back, D=forward, S=stop, N=set zero/next.
+  After Arduino reports READY: press S to arm movement (S again disarms).
+  Keep the same serial connection open throughout.
 */
 
 import oscP5.*;
@@ -48,7 +50,10 @@ final float WEK_TIMEOUT_MS = 1300;
 OscP5 wekOsc;
 OscP5 personOsc;
 Serial arduino;
-boolean serialEnabled = false; // SAFE DEFAULT: DIGITAL TWIN ONLY
+boolean serialEnabled = false; // hardware motion ARMED, not merely connected
+boolean arduinoReady = false; // becomes true only after startup homing
+int calibratingMotor = 0; // 0 until first Arduino status, then 1..4
+String arduinoStatus = "NOT CONNECTED";
 int lastSerialSendMs = -100000;
 
 // ---------- NETWORK INPUT ----------
@@ -111,7 +116,7 @@ void setup() {
     + ", Python OSC :" + PERSON_OSC_PORT);
   println("Available serial ports:");
   printArray(Serial.list());
-  println("Hardware DISARMED. Press S after verifying the digital twin and physical motor setup.");
+  println("Hardware DISARMED. Press B to connect and calibrate; then S to arm.");
 }
 
 void oscEvent(OscMessage message) {
@@ -171,9 +176,11 @@ void draw() {
     }
   }
 
+  // Read Arduino's homing status on the existing serial connection.
+  readArduinoStatus();
   updateBehaviour(dt, now, present, wekFresh, currentThreat, currentEngagement, f);
   drawTwin(present, wekFresh, f);
-  if (serialEnabled && now - lastSerialSendMs >= SERIAL_SEND_INTERVAL_MS) {
+  if (serialEnabled && arduinoReady && now - lastSerialSendMs >= SERIAL_SEND_INTERVAL_MS) {
     sendToArduino();
     lastSerialSendMs = now;
   }
@@ -304,7 +311,10 @@ void drawTwin(boolean present, boolean wekFresh, float[] f) {
   textSize(13);
   text(testMode ? "MANUAL TEST MODE" : "LIVE CAMERA / WEKINATOR", 950, 42);
   fill(serialEnabled ? color(255, 170, 85) : color(138, 160, 170));
-  text(serialEnabled ? "ARDUINO: ARMED" : "ARDUINO: DISARMED", 950, 67);
+  String hwLabel = (arduino == null) ? "ARDUINO: DISCONNECTED"
+      : (!arduinoReady ? "ARDUINO: CALIBRATION"
+      : (serialEnabled ? "ARDUINO: ARMED" : "ARDUINO: DISARMED"));
+  text(hwLabel, 950, 67);
 
   drawMeter("THREAT", threat, 38, 105, color(230, 101, 98));
   drawMeter("ENGAGEMENT", engagement, 331, 105, color(75, 173, 232));
@@ -363,8 +373,16 @@ void drawTwin(boolean present, boolean wekFresh, float[] f) {
       + "     WEKINATOR: " + (testMode ? "SIMULATED" : (wekFresh ? "LIVE" : "NO DATA"))
       + "     STARTLE: " + nf(startleRemaining, 1, 2) + " s";
   text(status, 314, 647);
-  text("T: test mode   P: toggle person   E/R: engagement +/-   F/G: threat +/-", 36, 742);
-  text("Arrows: left wrist   I/J/K/L: right wrist   V: trust=85%   C: reset trust   X: force closed   S: serial", 36, 770);
+  if (arduino != null && !arduinoReady) {
+    fill(240, 190, 96);
+    text("CALIBRATING MOTOR " + (calibratingMotor == 0 ? "..." : calibratingMotor)
+      + ":  A backward  |  D forward  |  S STOP  |  N set zero / next", 36, 742);
+    fill(182, 201, 213);
+    text("Arduino: " + arduinoStatus + "     (B disconnects; stop motor first)", 36, 770);
+  } else {
+    text("B: connect/disconnect   S: arm/disarm after calibration   T: test mode   X: force closed", 36, 742);
+    text("P: person   E/R: engagement   F/G: threat   Arrows, I/J/K/L: wrists   V/C: trust", 36, 770);
+  }
 }
 
 void drawMeter(String label, float value, float x, float y, int colour) {
@@ -389,41 +407,115 @@ void drawWristDot(float x, float y, float bx, float by, float w, float h, int co
   ellipse(bx + constrain(x, 0, 1)*w, by + constrain(y, 0, 1)*h, 9, 9);
 }
 
-void sendToArduino() {
+// Receive newline-delimited messages from the Arduino while keeping its
+// serial connection open. READY is emitted only AFTER four motors are homed.
+void readArduinoStatus() {
   if (arduino == null) return;
+  try {
+    while (arduino.available() > 0) {
+      String line = arduino.readStringUntil('\n');
+      if (line == null) break;
+      line = trim(line);
+      if (line.length() == 0) continue;
+      println("Arduino: " + line);
+      arduinoStatus = line;
+
+      if (line.startsWith("CALIBRATING MOTOR ")) {
+        try {
+          calibratingMotor = Integer.parseInt(
+              trim(line.substring("CALIBRATING MOTOR ".length())));
+        } catch (Exception ignored) { }
+      }
+
+      if (line.equals("SHY CAT CONTROLLER READY") ||
+          line.equals("NORMAL OPERATION ACTIVE")) {
+        arduinoReady = true;
+        serialEnabled = false; // manual safety arm required
+        arduinoStatus = "CALIBRATED - PRESS S TO ARM";
+        println("Calibration finished. Press S to arm physical motors.");
+      }
+    }
+  } catch (Exception e) {
+    println("Arduino serial read failed: " + e.getMessage());
+    disconnectArduino();
+  }
+}
+
+void sendToArduino() {
+  if (arduino == null || !arduinoReady || !serialEnabled) return;
   String packet = "A," + stepTargets[0] + "," + stepTargets[1] + ","
       + stepTargets[2] + "," + stepTargets[3] + "\n";
   try {
     arduino.write(packet);
   } catch (Exception e) {
     println("Arduino serial disconnected: " + e.getMessage());
-    serialEnabled = false;
-    try { arduino.stop(); } catch (Exception ignored) {}
-    arduino = null;
+    disconnectArduino();
   }
 }
 
-void toggleSerial() {
-  if (serialEnabled) {
-    serialEnabled = false;
-    if (arduino != null) arduino.stop();
-    arduino = null;
-    println("Arduino output DISARMED");
+void sendCalibrationKey(char k) {
+  if (arduino == null || arduinoReady) return;
+  try {
+    arduino.write(k); // Arduino's homing loop reads individual characters
+    arduinoStatus = "SENT " + Character.toUpperCase(k);
+  } catch (Exception e) {
+    println("Calibration command failed: " + e.getMessage());
+    disconnectArduino();
+  }
+}
+
+void disconnectArduino() {
+  if (arduino != null) {
+    try {
+      if (!arduinoReady) arduino.write('s'); // stop calibration motor
+      else arduino.write("H\n"); // request close before disconnect
+    } catch (Exception ignored) { }
+    try { arduino.stop(); } catch (Exception ignored) { }
+  }
+  arduino = null;
+  arduinoReady = false;
+  serialEnabled = false;
+  calibratingMotor = 0;
+  arduinoStatus = "NOT CONNECTED";
+  println("Arduino disconnected. Reconnecting will reset Nano and restart homing.");
+}
+
+void toggleConnection() {
+  if (arduino != null) {
+    disconnectArduino();
     return;
   }
   try {
     arduino = new Serial(this, ARDUINO_PORT, ARDUINO_BAUD);
-    delay(1800); // Nano normally resets when the serial port opens.
     arduino.clear();
-    serialEnabled = true;
-    lastSerialSendMs = -100000;
-    println("Arduino output ARMED: " + ARDUINO_PORT);
+    // Opening the port resets a typical Nano; don't send normal commands yet.
+    arduinoReady = false;
+    serialEnabled = false;
+    calibratingMotor = 0;
+    arduinoStatus = "WAITING FOR ARDUINO CALIBRATION";
+    println("Connected: " + ARDUINO_PORT + ". Calibrate with A/D/S/N.");
   } catch (Exception e) {
     println("Cannot open " + ARDUINO_PORT + ": " + e.getMessage());
     println("Available ports:");
     printArray(Serial.list());
-    serialEnabled = false;
     arduino = null;
+    arduinoReady = false;
+    serialEnabled = false;
+  }
+}
+
+void toggleArm() {
+  if (arduino == null || !arduinoReady) {
+    println("Connect with B and complete all four calibrations first.");
+    return;
+  }
+  serialEnabled = !serialEnabled;
+  if (!serialEnabled) {
+    try { arduino.write("H\n"); } catch (Exception e) { disconnectArduino(); }
+    println("Hardware DISARMED; commanded closed position.");
+  } else {
+    lastSerialSendMs = -100000;
+    println("Hardware ARMED: sending live position targets.");
   }
 }
 
@@ -436,9 +528,25 @@ void keyPressed() {
     if (keyCode == DOWN)  testFeatures[1] = constrain(testFeatures[1]+.04, 0, 1);
     return;
   }
+
   char k = Character.toLowerCase(key);
+
+  // Connection key is always available. It never arms the motors.
+  if (k == 'b') {
+    toggleConnection();
+    return;
+  }
+
+  // During calibration, A/D/S/N override every digital-twin shortcut.
+  if (arduino != null && !arduinoReady) {
+    if (k == 'a' || k == 'd' || k == 's' || k == 'n') {
+      sendCalibrationKey(k);
+    }
+    return;
+  }
+
   if (k == 't') testMode = !testMode;
-  else if (k == 's') toggleSerial();
+  else if (k == 's') toggleArm();
   else if (k == 'x') emergencyClosed = !emergencyClosed;
   else if (k == 'c') trust = 0;
   else if (k == 'v') trust = .85;
@@ -456,6 +564,6 @@ void keyPressed() {
 }
 
 void dispose() {
-  // Nano has its own loss-of-serial fail-closed behaviour.
-  if (arduino != null) arduino.stop();
+  // Stop a calibration jog if possible before quitting.
+  disconnectArduino();
 }
