@@ -16,11 +16,24 @@ final int SERIAL_SEND_INTERVAL_MS = 50;
 final int[] MAX_OPEN_STEPS = {512, 341, 683, 512};
 final int[] MOTOR_DIRECTION = {-1, -1, +1, +1}; // -1 = anticlockwise | +1 = clockwise
 
-final float TRUST_GAIN_PER_SECOND = 0.12;
+final float TRUST_GAIN_PER_SECOND = 0.5;
 final float TRUST_LOSS_PER_SECOND = 0.40;
 final float TRUST_DECAY_UNOBSERVED = 0.04;
 final float MIMIC_START_TRUST = 0.75;
 final float MIMIC_FULL_TRUST = 0.95;
+// Wrist Y normalisation: units are shoulder widths from shoulder centre.
+// -1.4 = hand well below shoulder; +1.4 = hand well above shoulder.
+final float MIMIC_VERTICAL_LOW = -1.4;
+final float MIMIC_VERTICAL_HIGH = 1.4;
+// Horizontal wrist reach, measured OUTWARD from each estimated shoulder.
+// Units: shoulder widths. At MIN the wrist is close to its own shoulder;
+// at MAX the arm is naturally extended sideways.
+// Decrease MAX to reach full opening with less extension; increase for more.
+final float MIMIC_HORIZONTAL_MIN = 0.0;
+final float MIMIC_HORIZONTAL_MAX = 1.25;
+// Set true when input image X is mirrored relative to anatomical left/right.
+// If outward arm extension produces no reach, toggle this switch.
+final boolean MIRRORED_WRIST_X = true;
 
 final float STARTLE_DURATION_S = 1.3;
 final float THREAT_STARTLE_THRESHOLD = 0.72;
@@ -42,7 +55,10 @@ int lastSerialSendMs = -100000;
 
 // communication variables to help wekinator and python talk to processing
 final Object networkLock = new Object();
-float[] poseFeatures = new float[12];
+// First 12 features remain identical to Wekinator training inputs.
+// Feature 13 (index 12) is shoulder-centre Y, sent ONLY to Processing.
+float[] poseFeatures = new float[13];
+boolean shoulderYAvailable = false;
 boolean rawPersonPresent = false;
 int lastPoseTrueMs = -100000;
 int lastWekMs = -100000;
@@ -76,14 +92,15 @@ boolean testPersonPresent = false;
 float testThreat = 0.05;
 float testEngagement = 0.85;
 float[] testFeatures = {
-  .25, .72, .75, .72, .50, .23,
-  .12, .12, .10, .05, .05, .50
+  .75, .72, .25, .72, .50, .23,
+  .12, .12, .10, .05, .05, .50,
+  .36 // shoulder-centre Y (13th feature, for body-relative wrist height)
 };
 
 // ---------- DRAWING THE ORIGINAL FOUR-PIVOT DIGITAL TWIN ----------
 final String[] PIVOT_LABEL = {"A", "B", "C", "D"};
 final float[] PIVOT_X = {.19, .39, .61, .81};
-final float[] CLOSED_ANGLE_DEG = {50, 30, -30, -50};
+final float[] CLOSED_ANGLE_DEG = {270, 270, 270, 270};
 final float[] OPEN_ANGLE_DEG = {-48, -18, 18, 48};
 final float[] ARM_LENGTH = {185, 160, 160, 185};
 
@@ -131,6 +148,11 @@ void oscEvent(OscMessage message) {
         for (int i = 0; i < 12; i++) {
           poseFeatures[i] = constrain(message.get(i).floatValue(), 0, 1);
         }
+        // Old 12-value Python messages remain usable (camera-relative Y fallback).
+        shoulderYAvailable = message.arguments().length >= 13;
+        if (shoulderYAvailable) {
+          poseFeatures[12] = constrain(message.get(12).floatValue(), 0, 1);
+        }
       }
     }
   }
@@ -141,7 +163,7 @@ void draw() {
   float dt = previousDrawMs < 0 ? 1.0/60 : constrain((now - previousDrawMs) / 1000.0, .001, .05);
   previousDrawMs = now;
 
-  float[] f = new float[12];
+  float[] f = new float[13];
   boolean present;
   boolean wekFresh;
   float currentThreat, currentEngagement;
@@ -265,13 +287,32 @@ float[] calculateMimic(float[] f) {
   // torso centre X = 4, shoulder width = 5.
   float torsoX = f[4];
   float shoulderW = max(.08, f[5]);
-  // Distances relative to torso for sideways reach, reducing effect of walking.
-  float leftReach = constrain(.22 + (torsoX - f[0]) / (1.5 * shoulderW), 0, 1);
-  float rightReach = constrain(.22 + (f[2] - torsoX) / (1.5 * shoulderW), 0, 1);
-  // Height: 0 at image bottom, 1 at image top.
-  // Note: shoulder Y is not in the 12 old features; this is camera-relative.
-  float leftHeight = constrain(map(f[1], .83, .13, 0, 1), 0, 1);
-  float rightHeight = constrain(map(f[3], .83, .13, 0, 1), 0, 1);
+  // Estimate each shoulder from torso centre and apparent shoulder width.
+  // Measure wrists OUTWARD from their own shoulders, not across the torso.
+  // Dividing by shoulder width compensates for apparent body size in camera.
+  // Camera feeds differ: a mirrored feed places the person's LEFT
+  // shoulder to the right of screen centre. Keep anatomical wrist labels.
+  float leftShoulderX = torsoX + (MIRRORED_WRIST_X ? +0.5 : -0.5) * shoulderW;
+  float rightShoulderX = torsoX + (MIRRORED_WRIST_X ? -0.5 : +0.5) * shoulderW;
+  float leftOutward = (MIRRORED_WRIST_X ? f[0] - leftShoulderX : leftShoulderX - f[0]) / shoulderW;
+  float rightOutward = (MIRRORED_WRIST_X ? rightShoulderX - f[2] : f[2] - rightShoulderX) / shoulderW;
+  float leftReach = constrain(map(leftOutward, MIMIC_HORIZONTAL_MIN, MIMIC_HORIZONTAL_MAX, 0, 1), 0, 1);
+  float rightReach = constrain(map(rightOutward, MIMIC_HORIZONTAL_MIN, MIMIC_HORIZONTAL_MAX, 0, 1), 0, 1);
+   // Height relative to the shoulder centre, divided by apparent shoulder width.
+   // This compensates for movement up/down in frame and distance to camera.
+   // Only activate for 13-value OSC messages (or hand-test mode).
+   float leftHeight, rightHeight;
+   if (testMode || shoulderYAvailable) {
+     float shoulderY = f[12];
+     float leftVertical = (shoulderY - f[1]) / shoulderW;
+     float rightVertical = (shoulderY - f[3]) / shoulderW;
+     leftHeight = constrain(map(leftVertical, MIMIC_VERTICAL_LOW, MIMIC_VERTICAL_HIGH, 0, 1), 0, 1);
+     rightHeight = constrain(map(rightVertical, MIMIC_VERTICAL_LOW, MIMIC_VERTICAL_HIGH, 0, 1), 0, 1);
+   } else {
+     // Backwards-compatible fallback until Python sends shoulder-centre Y.
+     leftHeight = constrain(map(f[1], .83, .13, 0, 1), 0, 1);
+     rightHeight = constrain(map(f[3], .83, .13, 0, 1), 0, 1);
+   }
   // A/B mirror the left hand's horizontal/vertical motion;
   // C/D mirror the right hand's vertical/horizontal motion.
   return new float[] {
