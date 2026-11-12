@@ -76,7 +76,7 @@ AccelStepper motors[NUM_MOTORS] = {
 
   AccelStepper(AccelStepper::FULL4WIRE, 10, 8, 9, 7),
 
-  AccelStepper(AccelStepper::FULL4WIRE, 18, 11, 19, 12),
+  AccelStepper(AccelStepper::FULL4WIRE, 18, 20, 19, 21),
 
   AccelStepper(AccelStepper::FULL4WIRE, 14, 16, 15, 17)
 
@@ -86,7 +86,7 @@ AccelStepper motors[NUM_MOTORS] = {
 // Maximum opening travel for each motor
 
 const long MAX_OPEN_STEPS[NUM_MOTORS] = {
-  512, 341, 683, 512
+  1000, 1000, 1000, 1000
 };
 
 
@@ -101,9 +101,9 @@ const int8_t MOTOR_DIRECTION[NUM_MOTORS] = {
 // NORMAL MOVEMENT SETTINGS
 // ==================================================
 
-const float MAX_SPEED_STEPS_PER_S = 280.0f;
+const float MAX_SPEED_STEPS_PER_S = 250.0f;
 
-const float ACCEL_STEPS_PER_S2 = 520.0f;
+const float ACCEL_STEPS_PER_S2 = 650.0f;
 
 
 // ==================================================
