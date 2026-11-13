@@ -1,16 +1,4 @@
-"""Shy Cat: MediaPipe -> Wekinator + Processing.
-
-Install: pip install -r requirements.txt
-Put pose_landmarker_lite.task alongside this file, then run this script.
-
-Wekinator: /wek/inputs 127.0.0.1:6448 (12 floats; 2 regression outputs)
-Processing: /person/present and /person/features 127.0.0.1:12001
-
-IMPORTANT: The feature order matches the original 12-input project. However,
-reconstructed normalisation/smoothing constants may differ from your *trained*
-script. To guarantee compatibility with old training, retain the old feature
-extraction calculations and add/keep the Processing OSC messages below.
-"""
+## IDE CPS Group 5 - "Shy Cat" - MediaPipe body tracking and OSC output to Wekinator and Processing :)
 
 from __future__ import annotations
 
