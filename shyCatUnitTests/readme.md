@@ -16,9 +16,9 @@ ShyCat_stepperTest3:
 
 ShyCat_stepperTest3.2:
 
-- Operates the same as "ShyCat_stepperTest3" but has the added functionality of being able to set the inital position of each stepper before the void loop().
+- Operates the same as "ShyCat_stepperTest3" but has the added functionality of being able to set the inital position of each stepper before the void loop(
 
-- | Serial command | Action                                  |
+  | Serial command | Action                                  |
   | -------------- | --------------------------------------- |
   | `a`            | Rotate selected motor backwards         |
   | `d`            | Rotate selected motor forwards          |

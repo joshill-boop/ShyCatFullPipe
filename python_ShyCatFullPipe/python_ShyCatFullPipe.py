@@ -1,291 +1,416 @@
-"""Shy Cat: MediaPipe -> Wekinator + Processing.
+# IDE CPS Group 5 - "Shy Cat" - MediaPipe body tracking and OSC output to Wekinator and Processing :)
+# If "pose_landmarker_lite.task" isnt in the same folder as the code, it wont work. 
+# You must also run the code from that folder or it wont find "pose_landmarker_lite.task".
 
-Install: pip install -r requirements.txt
-Put pose_landmarker_lite.task alongside this file, then run this script.
+# This Python code was written by Josh Hill with guidance, technical help and debugging from ChatGPT.
 
-Wekinator: /wek/inputs 127.0.0.1:6448 (12 floats; 2 regression outputs)
-Processing: /person/present and /person/features 127.0.0.1:12001
-
-IMPORTANT: The feature order matches the original 12-input project. However,
-reconstructed normalisation/smoothing constants may differ from your *trained*
-script. To guarantee compatibility with old training, retain the old feature
-extraction calculations and add/keep the Processing OSC messages below.
-"""
-
-from __future__ import annotations
-
-from collections import deque
-from pathlib import Path
 import math
+import os
 import statistics
 import time
+from collections import deque
 
+# OpenCV handles the camera, MediaPipe finds the body landmarks, and pythonosc sends data to other programs.
 import cv2
 import mediapipe as mp
 from pythonosc import udp_client
 
-WEK_HOST, WEK_PORT = "127.0.0.1", 6448
-PROCESSING_HOST, PROCESSING_PORT = "127.0.0.1", 12001
-CAMERA_INDEX = 0
-CAMERA_BACKEND_AVFOUNDATION = True  # macOS; set False for Windows/Linux
-FLIP_CAMERA = False  # Match orientation used when training Wekinator!
-MODEL_PATH = Path(__file__).with_name("pose_landmarker_lite.task")
-PREVIEW = True
-PRINT_FEATURES = False
-POSE_CONFIDENCE = 0.55
+# Camera and tracking settings. True means on, False means off.
+CAMERA_NUMBER = 0
+USE_MAC_CAMERA = True
+FLIP_CAMERA = False
+SHOW_CAMERA = True
+CONFIDENCE = 0.55
 
-# Motion normalisation: tune only if retraining / matching previous version.
-WRIST_SPEED_AT_ONE = 2.3        # torso widths per second
-BODY_SPEED_AT_ONE = 1.8         # torso widths per second
-VARIABILITY_AT_ONE = 0.9        # torso widths per second (std dev)
-ACCELERATION_AT_ONE = 5.0       # torso widths per second^2
-APPROACH_AT_ONE = 1.0           # shoulder width changes per second
-VELOCITY_WINDOW_S = 0.10
-VARIABILITY_WINDOW_S = 0.60
-HISTORY_S = 0.90
+# This is the trained MediaPipe model file that detects body poses.
+MODEL_FILE = "pose_landmarker_lite.task"
 
-# MediaPipe landmark indices
-LEFT_SHOULDER, RIGHT_SHOULDER = 11, 12
-LEFT_WRIST, RIGHT_WRIST = 15, 16
-LEFT_HIP, RIGHT_HIP = 23, 24
-TRACKED = [LEFT_SHOULDER, RIGHT_SHOULDER, LEFT_WRIST, RIGHT_WRIST,
-           LEFT_HIP, RIGHT_HIP]
+WEKINATOR_IP = "127.0.0.1"
+WEKINATOR_PORT = 6448
+PROCESSING_IP = "127.0.0.1"
+PROCESSING_PORT = 12001
 
+# Change these to adjust how Wekinator and Processing react to movement. It may cause some weird behaviour in the Wekinator models though.
+MAX_WRIST_SPEED = 2.3
+MAX_BODY_SPEED = 1.8
+MAX_VARIABILITY = 0.9
+MAX_ACCELERATION = 5.0
+MAX_APPROACH = 1.0
 
-def clip(x: float, lo: float = 0.0, hi: float = 1.0) -> float:
-    return max(lo, min(hi, x))
+SPEED_WINDOW = 0.10 # Seconds used to calculate movement speed
+VARIABILITY_WINDOW = 0.60 # Seconds of recent speeds used to measure how uneven movement is
+HISTORY_LENGTH = 0.90 # How long we keep old body positions (in seconds)
 
+# MediaPipe landmarks - Dont change
+LEFT_SHOULDER = 11
+RIGHT_SHOULDER = 12
+LEFT_WRIST = 15
+RIGHT_WRIST = 16
+LEFT_HIP = 23
+RIGHT_HIP = 24
 
-def distance(p, q) -> float:
-    return math.hypot(p[0] - q[0], p[1] - q[1])
+BODY_PARTS = [LEFT_SHOULDER, RIGHT_SHOULDER, LEFT_WRIST, RIGHT_WRIST, LEFT_HIP, RIGHT_HIP]
 
+# Keeps a value between 0 and 1 so that Wekinator doesnt get confused with larger or smaller numbers.
+def limit(value):
+    # min stops the value going over 1, then max stops it going below 0.
+    return max(0.0, min(1.0, value))
 
-class OneEuro:
-    """Adaptive position smoothing; a fresh filter for each scalar coordinate."""
+# Takes x and y of two points and calculates the distance between them.
+def distance(point1, point2):
+    # [0] means X and [1] means Y.
+    change_x = point1[0] - point2[0]
+    change_y = point1[1] - point2[1]
+    # Pythagoras: square the X and Y changes, add them and take the square root.
+    return math.sqrt(change_x ** 2 + change_y ** 2)
 
-    def __init__(self, min_cutoff=1.2, beta=0.08, d_cutoff=1.0):
-        self.min_cutoff = min_cutoff
-        self.beta = beta
-        self.d_cutoff = d_cutoff
-        self.prev = None
-        self.dx = 0.0
-        self.last_t = None
-
-    @staticmethod
-    def alpha(cutoff, dt):
-        tau = 1.0 / (2 * math.pi * cutoff)
-        return 1.0 / (1.0 + tau / dt)
-
-    def update(self, value, t):
-        if self.last_t is None:
-            self.last_t, self.prev = t, value
-            return value
-        dt = max(1e-3, min(0.25, t - self.last_t))
-        raw_derivative = (value - self.prev) / dt
-        self.dx += self.alpha(self.d_cutoff, dt) * (raw_derivative - self.dx)
-        cutoff = self.min_cutoff + self.beta * abs(self.dx)
-        self.prev += self.alpha(cutoff, dt) * (value - self.prev)
-        self.last_t = t
-        return self.prev
+# Checks that enough points of a person are visible before sending data to Wekinator.
+def person_detected(landmarks):
+    # If MediaPipe found nobody, or returned too few landmarks, say no person.
+    if landmarks is None or len(landmarks) < 25:
+        return False
+    # Check confidence for the shoulders and hips.
+    for part in [LEFT_SHOULDER, RIGHT_SHOULDER, LEFT_HIP, RIGHT_HIP]:
+        if landmarks[part].visibility < CONFIDENCE:
+            return False
+        return True
 
 
-class FeatureExtractor:
+# Reduces jitter in the detected positions. It smooths more when movement is slow, but lets faster movements through more quickly.
+class SmoothValue:
     def __init__(self):
-        self.filters = {index: (OneEuro(), OneEuro()) for index in TRACKED}
-        self.samples = deque()  # (seconds, coords_by_landmark, shoulder_width)
-        self.speed_samples = deque()  # (seconds, average_body_speed)
-        self.previous_body_speed = 0.0
-        self.previous_body_time = None
+        self.previous_value = None
+        self.smoothed_speed = 0.0
+        self.previous_time = None
 
-    def reset(self):
-        self.__init__()
+    # Works out how strongly to mix a new reading into the smoothed value.
+    # Larger cutoff means less smoothing / a quicker response.
+    def smoothing_amount(self, cutoff, seconds):
+        time_constant = 1.0 / (2.0 * math.pi * cutoff)
+        return 1.0 / (1.0 + time_constant / seconds)
 
-    def sample_at_or_before(self, t):
-        # Use the closest earlier sample for stable finite-difference velocity.
-        for sample in reversed(self.samples):
-            if sample[0] <= t:
-                return sample
-        return self.samples[0] if self.samples else None
+    # Take a new position value and return a smoother version of it.
+    def update(self, value, current_time):
+        if self.previous_time is None:
+            self.previous_time = current_time
+            self.previous_value = value
+            return value
 
-    def process(self, landmarks, t):
-        coords = {}
-        for idx in TRACKED:
-            xfilter, yfilter = self.filters[idx]
-            px, py = landmarks[idx].x, landmarks[idx].y
-            # Keep the last reliable wrist when it becomes briefly occluded.
-            # Otherwise a low-confidence wrist jump may be learned as a threat.
-            if idx in (LEFT_WRIST, RIGHT_WRIST) and \
-                    getattr(landmarks[idx], "visibility", 1.0) < 0.45 and \
-                    xfilter.prev is not None:
-                px, py = xfilter.prev, yfilter.prev
-            coords[idx] = (xfilter.update(px, t), yfilter.update(py, t))
+        # Find how much time passed. The limits avoid dividing by zero or a huge gap.
+        seconds = max(0.001, min(0.25, current_time - self.previous_time))
+        # Estimate how quickly this X or Y coordinate has changed.
+        speed = (value - self.previous_value) / seconds
+        amount = self.smoothing_amount(1.0, seconds)
+        # Gradually update the estimated speed instead of using the raw speed directly.
+        self.smoothed_speed += amount * (speed - self.smoothed_speed)
 
-        sl, sr = coords[LEFT_SHOULDER], coords[RIGHT_SHOULDER]
-        shoulder_center_x = (sl[0] + sr[0]) / 2.0
-        shoulder_width = max(0.065, distance(sl, sr))
+        # Faster movement increases cutoff, so the filter follows it more closely.
+        cutoff = 1.2 + 0.08 * abs(self.smoothed_speed)
+        amount = self.smoothing_amount(cutoff, seconds)
+        # Move the old smoothed value part of the way towards the new reading.
+        self.previous_value += amount * (value - self.previous_value)
+        self.previous_time = current_time
+        return self.previous_value
 
-        self.samples.append((t, coords, shoulder_width))
-        while len(self.samples) > 2 and self.samples[0][0] < t - HISTORY_S:
-            self.samples.popleft()
+# This class takes the MediaPipe landmarks and calculates the 12 Wekinator inputs; after applying the smoothing filters.
+class BodyTracker:
+    def __init__(self):
+        # This runs when we create a BodyTracker, e.g. tracker = BodyTracker().
+        # Make separate X and Y smoothing filters for each body part.
+        # {} creates an empty dictionary, storing one filter for each named body part.
+        self.x_filters = {}
+        self.y_filters = {}
+        for part in BODY_PARTS:
+            self.x_filters[part] = SmoothValue()
+            self.y_filters[part] = SmoothValue()
 
-        older = self.sample_at_or_before(t - VELOCITY_WINDOW_S)
-        dt = max(0.025, t - older[0]) if older else 0.1
-        old_coords = older[1] if older else coords
-        old_width = older[2] if older else shoulder_width
-        reference_width = max(0.065, (shoulder_width + old_width) / 2.0)
+        # Store recent positions and body speeds for movement calculations.
+        # These histories keep old readings so we can compare movement over time.
+        self.position_history = deque()
+        self.speed_history = deque()
+        self.last_body_speed = 0.0
+        self.last_body_time = None
 
-        def relative_motion(idx):
-            # Translation compensation makes movement less sensitive to walking.
-            centre_now = (coords[LEFT_SHOULDER][0] + coords[RIGHT_SHOULDER][0]) / 2
-            centre_old = (old_coords[LEFT_SHOULDER][0] + old_coords[RIGHT_SHOULDER][0]) / 2
-            cy_now = (coords[LEFT_SHOULDER][1] + coords[RIGHT_SHOULDER][1]) / 2
-            cy_old = (old_coords[LEFT_SHOULDER][1] + old_coords[RIGHT_SHOULDER][1]) / 2
-            p = ((coords[idx][0] - centre_now) / shoulder_width,
-                 (coords[idx][1] - cy_now) / shoulder_width)
-            q = ((old_coords[idx][0] - centre_old) / old_width,
-                 (old_coords[idx][1] - cy_old) / old_width)
-            return distance(p, q) / dt
+    # Read all six body parts from MediaPipe and smooth their coordinates.
+    def get_smoothed_positions(self, landmarks, current_time):
+        positions = {} # Empty dictionary to store the results
 
-        left_speed = relative_motion(LEFT_WRIST)
-        right_speed = relative_motion(RIGHT_WRIST)
+        for part in BODY_PARTS:
+            # MediaPipe gives X and Y as fractions of the image width and height.
+            x = landmarks[part].x
+            y = landmarks[part].y
 
-        # Body speed: six tracked points, compensating for camera distance.
-        body_speed = sum(distance(coords[i], old_coords[i]) for i in TRACKED)
-        body_speed /= len(TRACKED) * reference_width * dt
+            # A temporarily hidden wrist should not suddenly jump position.
+            # Only use this special rule on wrists, not shoulders or hips.
+            if part in [LEFT_WRIST, RIGHT_WRIST]:
+                if landmarks[part].visibility < 0.45:
+                    if self.x_filters[part].previous_value is not None:
+                        x = self.x_filters[part].previous_value
+                        y = self.y_filters[part].previous_value
 
-        self.speed_samples.append((t, body_speed))
-        while len(self.speed_samples) > 2 and self.speed_samples[0][0] < t - VARIABILITY_WINDOW_S:
-            self.speed_samples.popleft()
-        variability = (statistics.pstdev(x[1] for x in self.speed_samples)
-                       if len(self.speed_samples) >= 2 else 0.0)
+            # Each body part has its own X and Y smoothing filters.
+            x = self.x_filters[part].update(x, current_time)
+            y = self.y_filters[part].update(y, current_time)
+            positions[part] = (x, y) # Save the pair of smoothed coordinates
 
-        if self.previous_body_time is None:
-            acceleration = 0.0
-        else:
-            adt = max(0.025, t - self.previous_body_time)
-            acceleration = abs(body_speed - self.previous_body_speed) / adt
-        self.previous_body_speed, self.previous_body_time = body_speed, t
+        return positions
 
-        # Positive means moving closer; encoded 0.5 for stationary.
-        approach = ((shoulder_width / old_width) - 1.0) / dt
+    # Calculate the speed of one wrist using current and older frames.
+    def wrist_speed(self, part, positions, old_positions,
+                    shoulder_width, old_shoulder_width, seconds):
+        """Measure wrist movement relative to the shoulders, not the camera."""
+        # Find the midpoint between both shoulders in the current frame.
+        # [0] selects X, [1] selects Y, and / 2 gives the average.
+        centre_x = (positions[LEFT_SHOULDER][0] + positions[RIGHT_SHOULDER][0]) / 2
+        centre_y = (positions[LEFT_SHOULDER][1] + positions[RIGHT_SHOULDER][1]) / 2
+        # Do the same with the older frame.
+        old_centre_x = (old_positions[LEFT_SHOULDER][0] + old_positions[RIGHT_SHOULDER][0]) / 2
+        old_centre_y = (old_positions[LEFT_SHOULDER][1] + old_positions[RIGHT_SHOULDER][1]) / 2
 
-        # EXACT FEATURE ORDER (all 12 in range [0, 1]):
+        # Subtract the shoulder centre to remove sideways body movement.
+        # Divide by shoulder width to reduce the effect of distance from the camera.
+        wrist_now = ((positions[part][0] - centre_x) / shoulder_width,
+                     (positions[part][1] - centre_y) / shoulder_width)
+        wrist_before = ((old_positions[part][0] - old_centre_x) / old_shoulder_width,
+                        (old_positions[part][1] - old_centre_y) / old_shoulder_width)
+
+        # Compare the two wrist positions, then divide distance moved by time = speed.
+        return distance(wrist_now, wrist_before) / seconds
+
+    # Main method: turns MediaPipe landmarks into the 12 Wekinator numbers.
+    def calculate_features(self, landmarks, current_time):
+        # Call another method in this class to get smoothed X and Y values.
+        positions = self.get_smoothed_positions(landmarks, current_time)
+
+        left_shoulder = positions[LEFT_SHOULDER]
+        right_shoulder = positions[RIGHT_SHOULDER]
+        # Torso X = horizontal midpoint of the shoulders.
+        torso_x = (left_shoulder[0] + right_shoulder[0]) / 2
+        # 0.065 is a minimum to avoid division by very small numbers.
+        shoulder_width = max(0.065, distance(left_shoulder, right_shoulder))
+
+        # Save this frame. Keep no more than 0.9 seconds of history.
+        self.position_history.append((current_time, positions, shoulder_width))
+        # Remove readings older than HISTORY_LENGTH, but keep at least two.
+        while len(self.position_history) > 2:
+            if self.position_history[0][0] >= current_time - HISTORY_LENGTH:
+                break
+            self.position_history.popleft()
+
+        # Find an older frame, ideally 0.1 seconds ago, to calculate speed.
+        # [0] gets the oldest stored frame as a fallback.
+        old_frame = self.position_history[0]
+        # Search backwards to find a frame about SPEED_WINDOW seconds ago.
+        for frame in reversed(self.position_history):
+            if frame[0] <= current_time - SPEED_WINDOW:
+                old_frame = frame
+                break
+
+        # Split the saved frame into its three stored values.
+        old_time, old_positions, old_shoulder_width = old_frame
+        # Use at least 0.025 seconds so speed does not become excessively large.
+        seconds = max(0.025, current_time - old_time)
+        average_width = max(0.065, (shoulder_width + old_shoulder_width) / 2)
+
+        # Run the wrist speed method once for each wrist.
+        left_speed = self.wrist_speed(LEFT_WRIST, positions, old_positions,
+                                      shoulder_width, old_shoulder_width, seconds)
+        right_speed = self.wrist_speed(RIGHT_WRIST, positions, old_positions,
+                                       shoulder_width, old_shoulder_width, seconds)
+
+        # Average speed of all six tracked body parts.
+        # Start a running total, then add each body part's distance moved.
+        total_movement = 0.0
+        for part in BODY_PARTS:
+            total_movement += distance(positions[part], old_positions[part])
+        # Divide by number of parts, shoulder width, and time to get average relative speed.
+        body_speed = total_movement / (len(BODY_PARTS) * average_width * seconds)
+
+        # Variability measures how much the body speed changes recently.
+        # Save the new speed with its timestamp for comparison with recent speeds.
+        self.speed_history.append((current_time, body_speed))
+        while len(self.speed_history) > 2:
+            if self.speed_history[0][0] >= current_time - VARIABILITY_WINDOW:
+                break
+            self.speed_history.popleft()
+
+        # Make a simple list containing only the speed values, not their timestamps.
+        recent_speeds = []
+        for sample_time, speed in self.speed_history:
+            recent_speeds.append(speed)
+
+        # Standard deviation describes how spread out the recent speeds are.
+        # Constant speed = low variability; changing speed = higher variability.
+        variability = 0.0
+        if len(recent_speeds) >= 2:
+            variability = statistics.pstdev(recent_speeds)
+
+        # Acceleration measures how quickly body speed is changing.
+        # Compare speed with the previous frame. abs() makes changes positive
+        # whether the person speeds up or slows down.
+        acceleration = 0.0
+        if self.last_body_time is not None:
+            elapsed = max(0.025, current_time - self.last_body_time)
+            acceleration = abs(body_speed - self.last_body_speed) / elapsed
+        # Remember this frame's speed and time for next time.
+        self.last_body_speed = body_speed
+        self.last_body_time = current_time
+
+        # Larger shoulders on screen suggest the person is approaching.
+        # If shoulders get bigger in the image, approach is positive; smaller = negative.
+        approach = ((shoulder_width / old_shoulder_width) - 1.0) / seconds
+
+        # Keep this exact order: Wekinator was trained with these 12 inputs.
+        # limit() puts each feature into the 0 to 1 range expected by Wekinator.
+        # Dividing by a MAX value scales speeds etc. into that range.
         features = [
-            clip(coords[LEFT_WRIST][0]),                         # 1 left wrist X
-            clip(coords[LEFT_WRIST][1]),                         # 2 left wrist Y
-            clip(coords[RIGHT_WRIST][0]),                        # 3 right wrist X
-            clip(coords[RIGHT_WRIST][1]),                        # 4 right wrist Y
-            clip(shoulder_center_x),                             # 5 torso X
-            clip(shoulder_width),                                # 6 torso scale
-            clip(left_speed / WRIST_SPEED_AT_ONE),               # 7 left wrist speed
-            clip(right_speed / WRIST_SPEED_AT_ONE),              # 8 right wrist speed
-            clip(body_speed / BODY_SPEED_AT_ONE),                # 9 body speed
-            clip(variability / VARIABILITY_AT_ONE),              # 10 variability
-            clip(acceleration / ACCELERATION_AT_ONE),            # 11 acceleration
-            clip(0.5 + 0.5 * approach / APPROACH_AT_ONE),        # 12 approach/recession
+            limit(positions[LEFT_WRIST][0]),         # 1. Left wrist X
+            limit(positions[LEFT_WRIST][1]),         # 2. Left wrist Y
+            limit(positions[RIGHT_WRIST][0]),        # 3. Right wrist X
+            limit(positions[RIGHT_WRIST][1]),        # 4. Right wrist Y
+            limit(torso_x),                          # 5. Torso X
+            limit(shoulder_width),                   # 6. Shoulder width
+            limit(left_speed / MAX_WRIST_SPEED),     # 7. Left wrist speed
+            limit(right_speed / MAX_WRIST_SPEED),    # 8. Right wrist speed
+            limit(body_speed / MAX_BODY_SPEED),      # 9. Body speed
+            limit(variability / MAX_VARIABILITY),    # 10. Movement variability
+            limit(acceleration / MAX_ACCELERATION),  # 11. Acceleration
+            limit(0.5 + 0.5 * approach / MAX_APPROACH)  # 12. Approach / retreat
         ]
-        return features, coords
+
+        # Return both the 12 inputs and the smoothed positions for other parts of the code.
+        return features, positions
 
 
-def pose_is_valid(landmarks):
-    return (len(landmarks) >= 25 and
-            all(getattr(landmarks[i], "visibility", 1.0) >= POSE_CONFIDENCE
-                for i in (LEFT_SHOULDER, RIGHT_SHOULDER, LEFT_HIP, RIGHT_HIP)))
+# -------------------- RUN THE CAMERA --------------------
 
-
+# This function starts the camera, runs MediaPipe, and sends the results continuously.
 def main():
-    if not MODEL_PATH.exists():
-        raise FileNotFoundError(
-            f"Missing {MODEL_PATH.name}. Copy pose_landmarker_lite.task into {MODEL_PATH.parent}"
-        )
+    # Stop with a clear error if the model file cannot be found.
+    if not os.path.isfile(MODEL_FILE):
+        raise FileNotFoundError("pose_landmarker_lite.task not found in the current working directory")
 
-    wek_client = udp_client.SimpleUDPClient(WEK_HOST, WEK_PORT)
-    proc_client = udp_client.SimpleUDPClient(PROCESSING_HOST, PROCESSING_PORT)
-    backend = cv2.CAP_AVFOUNDATION if CAMERA_BACKEND_AVFOUNDATION else cv2.CAP_ANY
-    cap = cv2.VideoCapture(CAMERA_INDEX, backend)
-    if not cap.isOpened():
-        raise RuntimeError(f"Could not open camera index {CAMERA_INDEX}")
+    # Set up two OSC connections: one for Wekinator and one for Processing.
+    wekinator = udp_client.SimpleUDPClient(WEKINATOR_IP, WEKINATOR_PORT)
+    processing = udp_client.SimpleUDPClient(PROCESSING_IP, PROCESSING_PORT)
 
-    cap.set(cv2.CAP_PROP_FRAME_WIDTH, 960)
-    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 540)
-    extractor = FeatureExtractor()
-    BaseOptions = mp.tasks.BaseOptions
-    PoseLandmarker = mp.tasks.vision.PoseLandmarker
-    PoseOptions = mp.tasks.vision.PoseLandmarkerOptions
-    RunningMode = mp.tasks.vision.RunningMode
-    options = PoseOptions(
-        base_options=BaseOptions(model_asset_path=str(MODEL_PATH)),
-        running_mode=RunningMode.VIDEO,
+    # Use the Mac-specific camera connection if selected, otherwise the default.
+    if USE_MAC_CAMERA:
+        camera = cv2.VideoCapture(CAMERA_NUMBER, cv2.CAP_AVFOUNDATION)
+    else:
+        camera = cv2.VideoCapture(CAMERA_NUMBER)
+
+    if not camera.isOpened():
+        raise RuntimeError("Camera could not be opened")
+
+    # Request a camera frame size of 960 by 540 pixels.
+    camera.set(cv2.CAP_PROP_FRAME_WIDTH, 960)
+    camera.set(cv2.CAP_PROP_FRAME_HEIGHT, 540)
+
+    # Load the MediaPipe model. VIDEO means we process frames in time order.
+    settings = mp.tasks.vision.PoseLandmarkerOptions(
+        base_options=mp.tasks.BaseOptions(model_asset_path=str(MODEL_FILE)),
+        running_mode=mp.tasks.vision.RunningMode.VIDEO,
         num_poses=1,
-        min_pose_detection_confidence=POSE_CONFIDENCE,
-        min_pose_presence_confidence=POSE_CONFIDENCE,
-        min_tracking_confidence=POSE_CONFIDENCE,
+        min_pose_detection_confidence=CONFIDENCE,
+        min_pose_presence_confidence=CONFIDENCE,
+        min_tracking_confidence=CONFIDENCE
     )
-    start_time = time.monotonic()
-    last_timestamp_ms = -1
-    had_pose = False
-    last_print = 0.0
-    print("Camera started. OSC -> Wekinator :6448 and Processing :12001. Press Q to quit.")
 
+    # Create a tracker that remembers previous movement between frames.
+    tracker = BodyTracker()
+    person_was_present = False # Remember whether a person appeared last frame
+    start_time = time.monotonic() # Start a clock for measuring elapsed time
+    last_timestamp = -1 # Used to keep MediaPipe frame times increasing
+
+    print("Shy Cat running. Press Q in the camera window to quit.")
+
+    # finally (below) will release the camera even if an error happens.
     try:
-        with PoseLandmarker.create_from_options(options) as landmarker:
+        with mp.tasks.vision.PoseLandmarker.create_from_options(settings) as pose_model:
+            # Keep repeating until Q is pressed, the camera fails, or the program stops.
             while True:
-                ok, frame = cap.read()
-                if not ok:
-                    proc_client.send_message("/person/present", 0)
-                    print("Camera read failed; presence cleared.")
+                # Read an image from the camera. success tells us whether it worked.
+                success, frame = camera.read()
+                if not success:
+                    print("Could not read camera frame")
                     break
+
+                # Optionally mirror the image horizontally.
                 if FLIP_CAMERA:
                     frame = cv2.flip(frame, 1)
 
-                t = time.monotonic() - start_time
-                timestamp_ms = max(last_timestamp_ms + 1, int(t * 1000))
-                last_timestamp_ms = timestamp_ms
-                rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
-                result = landmarker.detect_for_video(image, timestamp_ms)
-                lm = result.pose_landmarks[0] if result.pose_landmarks else None
-                present = lm is not None and pose_is_valid(lm)
-                proc_client.send_message("/person/present", int(present))
+                # MediaPipe needs a timestamp in milliseconds for each frame.
+                current_time = time.monotonic() - start_time
+                # Convert seconds to milliseconds. max() makes sure time always moves forward.
+                timestamp = max(last_timestamp + 1, int(current_time * 1000))
+                last_timestamp = timestamp
+
+                # OpenCV uses BGR colours; MediaPipe expects RGB. Convert the format first.
+                rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb_frame)
+                # Ask MediaPipe to detect the body landmarks in this camera frame.
+                result = pose_model.detect_for_video(mp_image, timestamp)
+
+                # If MediaPipe sees a pose, use the first one (we configured one person).
+                landmarks = None
+                if result.pose_landmarks:
+                    landmarks = result.pose_landmarks[0]
+
+                # Send Processing a 1 when present and a 0 when not present.
+                present = person_detected(landmarks)
+                processing.send_message("/person/present", int(present))
 
                 if present:
-                    if not had_pose:
-                        extractor.reset()  # avoid explosive velocity on reacquisition
-                    features, points = extractor.process(lm, t)
-                    # Same 12 floats, both OSC destinations. No Wekinator changes needed.
-                    wek_client.send_message("/wek/inputs", features)
-                    proc_client.send_message("/person/features", features)
-                    had_pose = True
-                    if PREVIEW:
-                        h, w = frame.shape[:2]
-                        for i in (LEFT_WRIST, RIGHT_WRIST):
-                            x, y = points[i]
-                            cv2.circle(frame, (int(x * w), int(y * h)), 8,
-                                       (0, 240, 170), -1)
-                    if PRINT_FEATURES and t - last_print > 0.2:
-                        print("12 features:", [round(v, 3) for v in features])
-                        last_print = t
+                    # Start fresh when somebody re-enters the frame.
+                    if not person_was_present:
+                        tracker = BodyTracker()
+
+                    # Calculate the 12 features, send them to Wekinator and Processing.
+                    features, positions = tracker.calculate_features(landmarks, current_time)
+                    wekinator.send_message("/wek/inputs", features)
+                    processing.send_message("/person/features", features)
+                    person_was_present = True
+
+                    if SHOW_CAMERA:
+                        # Get image size so normalised wrist positions can become pixel positions.
+                        height, width = frame.shape[:2]
+                        for part in [LEFT_WRIST, RIGHT_WRIST]:
+                            x, y = positions[part]
+                            # Draw a small coloured circle over each tracked wrist.
+                            cv2.circle(frame, (int(x * width), int(y * height)),
+                                                                  8, (0, 240, 170), -1)
+
                 else:
-                    had_pose = False
-                    # Do not send fake zero inputs to Wekinator.
+                    person_was_present = False
+                    # Don't send fake zero values to Wekinator.
 
-                if PREVIEW:
-                    cv2.putText(frame, f"Person: {'YES' if present else 'NO'}",
-                                (20, 36), cv2.FONT_HERSHEY_SIMPLEX, 0.9,
-                                (0, 220, 50) if present else (0, 70, 255), 2)
-                    cv2.putText(frame, "Q: quit", (20, 72),
+                if SHOW_CAMERA:
+                    # Display whether a person is present on the camera preview.
+                    message = "Person: YES" if present else "Person: NO"
+                    colour = (0, 220, 50) if present else (0, 70, 255)
+
+                    cv2.putText(frame, message, (20, 36),
+                                cv2.FONT_HERSHEY_SIMPLEX, 0.9, colour, 2)
+
+                    cv2.putText(frame, "ESC: quit", (20, 72),
                                 cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+
                     cv2.imshow("Shy Cat - MediaPipe", frame)
-                    if cv2.waitKey(1) & 0xFF == ord("q"):
+
+                    # Stop the loop when Escape is pressed in the camera window.
+                    if cv2.waitKey(1) & 0xFF == 27:
                         break
+
+    # Close the camera and notify Processing that nobody is present.
     finally:
-        try:
-            proc_client.send_message("/person/present", 0)
-        finally:
-            cap.release()
-            if PREVIEW:
-                cv2.destroyAllWindows()
+        processing.send_message("/person/present", 0)
+        camera.release()
+
+        if SHOW_CAMERA:
+            cv2.destroyAllWindows()
 
 
+# Only run main() when this file is executed directly, not when imported elsewhere.
 if __name__ == "__main__":
     main()
