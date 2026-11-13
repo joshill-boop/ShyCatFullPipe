@@ -1,61 +1,79 @@
+// IDE CPS Group 5 - "Shy Cat" - Processing to Arduino sketch. Takes input from Wekinator and directly from MediaPipe, combining them to either build trust or mimick.
+
+// This Processing sketch was written by Josh Hill with guidance, technical help and debugging from ChatGPT.
+
 import oscP5.*;
 import processing.serial.*;
 
-// Connections
+// These are the addresses / ports used to talk to the other programs. The numbers must match their settings.
 final int WEK_OSC_PORT = 12000;
 final int PERSON_OSC_PORT = 12001;
 final String ARDUINO_PORT = "/dev/cu.usbmodem2101";
 final int ARDUINO_BAUD = 9600;
 final int SERIAL_SEND_INTERVAL_MS = 50;
 
+// Four numbers = one setting for each motor, in A/B/C/D order.
+// MAX_OPEN_STEPS sets the maximum travel from the manually calibrated closed position.
+// MOTOR_DIRECTION reverses which direction each motor turns when opening.
 // These settings must match Arduino.
 final int[] MAX_OPEN_STEPS = {1000, 1000, 1000, 1000};
 final int[] MOTOR_DIRECTION = {-1, -1, +1, +1};
 
-// Behaviour settings
+// Settings for the shy-cat behaviour. These are the main numbers to experiment with.
 final float TRUST_GAIN_PER_SECOND = 0.1;
 final float TRUST_LOSS_PER_SECOND = 0.20;
 final float TRUST_DECAY_UNOBSERVED = 0.04;
 final float MIMIC_START_TRUST = 0.75;
 final float MIMIC_FULL_TRUST = 0.95;
 
+// How far the wrists can move up/down relative to shoulder height for mimicking.
 final float MIMIC_VERTICAL_LOW = -1.4;
 final float MIMIC_VERTICAL_HIGH = 1.4;
+// Horizontal wrist reach is measured in shoulder-widths, from close to shoulder to extended.
 final float MIMIC_HORIZONTAL_MIN = 0.0;
 final float MIMIC_HORIZONTAL_MAX = 1.25;
+// Set true if your camera image is mirrored; changes which X direction counts as outward.
 final boolean MIRRORED_WRIST_X = true;
 
+// How long the sculpture stays startled after a new person appears or sudden threat is detected.
 final float STARTLE_DURATION_S = 5;
 final float THREAT_STARTLE_THRESHOLD = 0.72;
+// Average amount the arms open when nobody is present (0 = closed, 1 = fully open).
 final float IDLE_OPENNESS = 0.66;
+// How much random wandering is added to the idle position.
 final float IDLE_WANDER_AMPLITUDE = 0.5;
 final float PERSON_MIN_OPENNESS = 0.17;
 final float PERSON_MAX_OPENNESS = 0.92;
+// If Python stops reporting a person for this long, count them as absent.
 final float INPUT_TIMEOUT_MS = 750;
+// If Wekinator stops replying for this long, treat its values as missing.
 final float WEK_TIMEOUT_MS = 1300;
 
 OscP5 wekOsc;
 OscP5 personOsc;
 Serial arduino;
 
+// Keep motors DISARMED until calibration is finished and S is pressed.
 boolean serialEnabled = false;
 boolean arduinoReady = false;
 int calibratingMotor = 0;
 String arduinoStatus = "NOT CONNECTED";
 int lastSerialSendMs = -100000;
 
-// OSC callbacks and draw() run on separate threads.
+// OSC messages can arrive while draw() is running. The lock stops both from changing the same data at once.
 final Object networkLock = new Object();
 
-// Optional feature 13 is shoulder-centre Y, for Processing only.
-float[] poseFeatures = new float[13];
+// Processing only needs 7 pose values: left wrist X/Y, right wrist X/Y,
+// torso X, shoulder width and shoulder-centre Y (in that order).
+// Python still sends its original 12 values to Wekinator, unchanged.
+float[] poseFeatures = new float[7];
 boolean shoulderYAvailable = false;
 int lastPoseTrueMs = -100000;
 int lastWekMs = -100000;
 float rawThreat = 0;
 float rawEngagement = 0;
 
-// Current behaviour state
+// Trust, fear and mimicking are calculated here; threat and engagement come from Wekinator.
 float threat = 0;
 float engagement = 0;
 float trust = 0;
@@ -66,25 +84,25 @@ float startleCooldown = 0;
 float previousThreat = 0;
 
 boolean wasPresent = false;
+// X key forces the targets closed, but this is not a hardware emergency-stop switch.
 boolean emergencyClosed = false;
 
+// Four openness values (0 to 1), one for each arm.
+// These are commanded positions, not measured feedback from the motors.
 float[] openness = {0, 0, 0, 0};
 int[] stepTargets = new int[4];
 
 String behaviouralState = "IDLE";
 int previousDrawMs = -1;
 
-// Manual test inputs
+// These values let you test the behaviour without needing Python or Wekinator running.
 boolean testMode = false;
 boolean testPersonPresent = false;
 float testThreat = 0.05;
 float testEngagement = 0.85;
-float[] testFeatures = {
-  .75, .72, .25, .72, .50, .23,
-  .12, .12, .10, .05, .05, .50,
-  .36
-};
+float[] testFeatures = {.75, .72, .25, .72, .50, .23, .36};
 
+// Processing runs settings() once to create the window, then setup() once to initialise everything.
 void settings() {
   size(1000, 760);
   smooth(4);
@@ -104,6 +122,7 @@ void setup() {
   println("Hardware DISARMED. Press B to connect and calibrate; then S to arm.");
 }
 
+// Called automatically whenever an OSC message arrives from Wekinator or Python.
 void oscEvent(OscMessage message) {
   synchronized (networkLock) {
     try {
@@ -117,11 +136,17 @@ void oscEvent(OscMessage message) {
       } else if (message.checkAddrPattern("/person/present") && count >= 1) {
         if (message.get(0).intValue() != 0) lastPoseTrueMs = millis();
 
+      // Python sends 13 numbers here, but we only need the first 6 and the last one.
+      // The middle 6 movement features are used by Wekinator, not Processing.
+      // Older 12-number Python messages still work, but height will use a fallback.
       } else if (message.checkAddrPattern("/person/features") && count >= 12) {
-        for (int i = 0; i < min(count, 13); i++) {
+        for (int i = 0; i < 6; i++) {
           poseFeatures[i] = constrain(message.get(i).floatValue(), 0, 1);
         }
         shoulderYAvailable = count >= 13;
+        if (shoulderYAvailable) {
+          poseFeatures[6] = constrain(message.get(12).floatValue(), 0, 1);
+        }
       }
     } catch (Exception ex) {
       println("Invalid OSC message: " + message.addrPattern());
@@ -129,6 +154,7 @@ void oscEvent(OscMessage message) {
   }
 }
 
+// draw() runs repeatedly (aiming for 60 times a second) to update behaviour, show the panel, and send motors.
 void draw() {
   int now = millis();
   float dt = previousDrawMs < 0
@@ -136,7 +162,7 @@ void draw() {
     : constrain((now - previousDrawMs) / 1000.0, .001, .05);
   previousDrawMs = now;
 
-  float[] f = new float[13];
+  float[] f = new float[7];
   boolean present;
   boolean wekFresh;
   float currentThreat, currentEngagement;
@@ -150,6 +176,8 @@ void draw() {
       currentEngagement = testEngagement;
     } else {
       arrayCopy(poseFeatures, f);
+      // Check that Python and Wekinator have provided recent data.
+      // If Wekinator has gone quiet, assume maximum threat and zero engagement.
       present = now - lastPoseTrueMs < INPUT_TIMEOUT_MS;
       wekFresh = now - lastWekMs < WEK_TIMEOUT_MS;
       currentThreat = wekFresh ? rawThreat : 1.0;
@@ -163,6 +191,7 @@ void draw() {
   );
   drawPanel(present, wekFresh, f);
 
+  // Only send motor commands after calibration, when armed, and after the send interval.
   if (serialEnabled && arduinoReady
       && now - lastSerialSendMs >= SERIAL_SEND_INTERVAL_MS) {
     sendToArduino();
@@ -170,8 +199,22 @@ void draw() {
   }
 }
 
+// This is the main behaviour function. The smaller functions below do each job.
 void updateBehaviour(float dt, int now, boolean present, boolean wekFresh,
                      float incomingThreat, float incomingEngagement, float[] f) {
+  threat = incomingThreat;
+  engagement = incomingEngagement;
+
+  updateStartle(dt, present, wekFresh, incomingThreat);
+  updateTrust(dt, present, wekFresh, incomingThreat, incomingEngagement);
+  updateFear(dt, present, wekFresh, incomingThreat);
+  updateMimicking(dt, present, wekFresh);
+  updateMotorPositions(dt, now, present, f);
+  updateBehaviourLabel(present, wekFresh);
+}
+
+// Startle when a person first appears or threat suddenly crosses the threshold.
+void updateStartle(float dt, boolean present, boolean wekFresh, float incomingThreat) {
   if (present && !wasPresent) {
     startleRemaining = STARTLE_DURATION_S;
     fear = 1.0;
@@ -188,11 +231,11 @@ void updateBehaviour(float dt, int now, boolean present, boolean wekFresh,
     trust = max(0, trust - .50);
   }
   previousThreat = incomingThreat;
+}
 
-  float inAlpha = 1.0 - exp(-dt * 5.5);
-  threat += (incomingThreat - threat) * inAlpha;
-  engagement += (incomingEngagement - engagement) * inAlpha;
-
+// Trust builds with calm, engaged movement and falls with threatening movement.
+void updateTrust(float dt, boolean present, boolean wekFresh,
+                 float incomingThreat, float incomingEngagement) {
   if (!present) {
     trust = max(0, trust - TRUST_DECAY_UNOBSERVED * dt);
   } else if (!wekFresh) {
@@ -208,7 +251,10 @@ void updateBehaviour(float dt, int now, boolean present, boolean wekFresh,
       trust = constrain(trust + (gain - erosion) * dt, 0, 1);
     }
   }
+}
 
+// Fear increases quickly when startled, then slowly reduces once it is safe.
+void updateFear(float dt, boolean present, boolean wekFresh, float incomingThreat) {
   float wantedFear = 0;
   if (present) {
     if (!wekFresh || startleRemaining > 0) wantedFear = 1;
@@ -217,17 +263,25 @@ void updateBehaviour(float dt, int now, boolean present, boolean wekFresh,
 
   float fearRate = wantedFear > fear ? 6.8 : 0.90;
   fear += (wantedFear - fear) * (1 - exp(-dt * fearRate));
+}
 
+// Above 75% trust, the sculpture gradually starts copying wrist positions.
+// Fear reduces this even if trust is high.
+void updateMimicking(float dt, boolean present, boolean wekFresh) {
   float desiredMimic = present && wekFresh
     ? smoothstep(MIMIC_START_TRUST, MIMIC_FULL_TRUST, trust)
     : 0;
   desiredMimic *= 1 - fear;
   mimicStrength += (desiredMimic - mimicStrength) * (1 - exp(-dt * 2.3));
+}
 
+// Work out the target openness for all four motors and convert it to steps.
+void updateMotorPositions(float dt, int now, boolean present, float[] f) {
   float[] mimic = calculateMimic(f);
   float engagedOpen = lerp(PERSON_MIN_OPENNESS, PERSON_MAX_OPENNESS, trust);
 
   for (int i = 0; i < 4; i++) {
+    // noise() makes slow, irregular wandering rather than sharp random movement.
     float wandering = (noise(10*i + now*.00029) - .5)
       * 2 * IDLE_WANDER_AMPLITUDE;
     float secondary = sin(now*.00064 + i*1.7) * .035;
@@ -235,19 +289,24 @@ void updateBehaviour(float dt, int now, boolean present, boolean wekFresh,
 
     float base = present ? engagedOpen + wandering*.38 : idle;
     float combined = lerp(base, mimic[i], mimicStrength);
+    // Fear makes the arms close; X forces closed targets until pressed again.
     if (present) combined = lerp(combined, 0.015, fear);
     if (emergencyClosed) combined = 0;
     float target = constrain(combined, 0, 1);
 
+    // Close fast and open slowly to make the movement feel cautious.
     float rate = target < openness[i] ? 5.8 : 1.55;
     openness[i] += (target - openness[i]) * (1.0 - exp(-dt * rate));
     openness[i] = constrain(openness[i], 0, 1);
 
+    // Send a signed step target for each motor, not a direct speed command.
     stepTargets[i] = round(
       MOTOR_DIRECTION[i] * MAX_OPEN_STEPS[i] * openness[i]
     );
   }
+}
 
+void updateBehaviourLabel(boolean present, boolean wekFresh) {
   if (emergencyClosed) behaviouralState = "MANUAL CLOSE";
   else if (!present) behaviouralState = "IDLE / WANDERING";
   else if (!wekFresh) behaviouralState = "ML SIGNAL LOST - CLOSING";
@@ -260,6 +319,7 @@ void updateBehaviour(float dt, int now, boolean present, boolean wekFresh,
   else behaviouralState = "ENGAGING / BUILDING TRUST";
 }
 
+// Turn the detected left/right wrist positions into four motor openness targets.
 float[] calculateMimic(float[] f) {
   // A/B follow left wrist reach/height; C/D follow right height/reach.
   float torsoX = f[4];
@@ -269,6 +329,8 @@ float[] calculateMimic(float[] f) {
   float rightShoulderX = torsoX
     + (MIRRORED_WRIST_X ? -0.5 : +0.5) * shoulderW;
 
+  // Measure how far the wrists reach OUTWARDS from their own shoulders.
+  // Dividing by shoulder width reduces the effect of camera distance.
   float leftOutward = (
     MIRRORED_WRIST_X ? f[0] - leftShoulderX : leftShoulderX - f[0]
   ) / shoulderW;
@@ -276,18 +338,21 @@ float[] calculateMimic(float[] f) {
     MIRRORED_WRIST_X ? rightShoulderX - f[2] : f[2] - rightShoulderX
   ) / shoulderW;
 
+  // Return four mimic targets in A/B/C/D order: left reach, left height, right height, right reach.
   return new float[] {
     lerp(.10, .97, map01(
       leftOutward, MIMIC_HORIZONTAL_MIN, MIMIC_HORIZONTAL_MAX
     )),
-    lerp(.10, .97, wristHeight(f[1], f[12], shoulderW)),
-    lerp(.10, .97, wristHeight(f[3], f[12], shoulderW)),
+    lerp(.10, .97, wristHeight(f[1], f[6], shoulderW)),
+    lerp(.10, .97, wristHeight(f[3], f[6], shoulderW)),
     lerp(.10, .97, map01(
       rightOutward, MIMIC_HORIZONTAL_MIN, MIMIC_HORIZONTAL_MAX
     ))
   };
 }
 
+// Measure wrist height relative to shoulder-centre Y (f[6]) and shoulder width.
+// This makes moving nearer/further from the camera affect mimicking less.
 float wristHeight(float wristY, float shoulderY, float shoulderW) {
   if (testMode || shoulderYAvailable) {
     return map01(
@@ -295,6 +360,8 @@ float wristHeight(float wristY, float shoulderY, float shoulderW) {
       MIMIC_VERTICAL_LOW, MIMIC_VERTICAL_HIGH
     );
   }
+  // Without shoulder Y, fall back to wrist height in the camera image.
+  // This fallback is NOT normalised by the person's size.
   return map01(wristY, .83, .13);
 }
 
@@ -307,6 +374,7 @@ float smoothstep(float e0, float e1, float x) {
   return t*t*(3 - 2*t);
 }
 
+// Draw the text, meters, motor targets, status, and keyboard instructions on screen.
 void drawPanel(boolean present, boolean wekFresh, float[] f) {
   background(14, 20, 29);
   fill(240); textSize(24);
@@ -357,6 +425,7 @@ void drawPanel(boolean present, boolean wekFresh, float[] f) {
   rect(16, 524, width - 32, 216, 10);
   textSize(14);
 
+  // Show manual homing instructions until Arduino reports calibration is complete.
   if (arduino != null && !arduinoReady) {
     fill(240, 190, 96);
     text("CALIBRATING MOTOR "
@@ -395,6 +464,7 @@ void drawMeter(String label, float value, float x, float y, int colour) {
   fill(231); text(nf(value * 100, 0, 0) + "%", x + 374, y + 23);
 }
 
+// Read text sent back over USB serial so Processing knows when calibration has finished.
 void readArduinoStatus() {
   if (arduino == null) return;
 
@@ -416,6 +486,7 @@ void readArduinoStatus() {
         } catch (Exception ignored) { }
       }
 
+      // Arduino says homing is finished; keep motors disarmed until S is pressed.
       if (line.equals("SHY CAT CONTROLLER READY")
           || line.equals("NORMAL OPERATION ACTIVE")) {
         arduinoReady = true;
@@ -443,6 +514,7 @@ boolean writeArduino(String message) {
   }
 }
 
+// Send all four motor step targets as: A,stepsA,stepsB,stepsC,stepsD
 void sendToArduino() {
   if (!arduinoReady || !serialEnabled) return;
   writeArduino("A," + stepTargets[0] + "," + stepTargets[1] + ","
@@ -454,6 +526,7 @@ void sendCalibrationKey(char k) {
   if (writeArduino(str(k))) arduinoStatus = "SENT " + Character.toUpperCase(k);
 }
 
+// Stop movement / send the closing command, disconnect, and reset the connection flags.
 void disconnectArduino() {
   if (arduino != null) {
     try {
@@ -474,6 +547,8 @@ void disconnectArduino() {
   println("Arduino disconnected. Reconnecting will reset Nano and restart homing.");
 }
 
+// B key: disconnect if connected; otherwise try opening the selected USB serial port.
+// Connecting normally resets the Arduino, so calibration starts again.
 void toggleConnection() {
   if (arduino != null) {
     disconnectArduino();
@@ -498,6 +573,7 @@ void toggleConnection() {
   }
 }
 
+// S key after calibration: enable or disable live motor output.
 void toggleArm() {
   if (arduino == null || !arduinoReady) {
     println("Connect with B and complete all four calibrations first.");
@@ -518,6 +594,7 @@ void moveTestWrist(int coordinate, float change) {
   testFeatures[coordinate] = constrain(testFeatures[coordinate] + change, 0, 1);
 }
 
+// Processing automatically calls keyPressed() whenever a key is pressed in its window.
 void keyPressed() {
   if (key == CODED) {
     if (!testMode) return;
@@ -535,7 +612,7 @@ void keyPressed() {
     return;
   }
 
-  // Calibration takes priority over normal letter shortcuts.
+  // While homing, A/D/S/N control the current motor instead of the normal shortcuts.
   if (arduino != null && !arduinoReady) {
     if (k == 'a' || k == 'd' || k == 's' || k == 'n') sendCalibrationKey(k);
     return;
@@ -564,6 +641,7 @@ void keyPressed() {
   }
 }
 
+// Processing calls dispose() as the sketch closes; disconnect Arduino safely.
 void dispose() {
   disconnectArduino();
 }

@@ -1,566 +1,170 @@
-/*
-  SHY CAT - 4x STEPPER CONTROLLER
-  Arduino Nano / ATmega328P
-  Uses AccelStepper library
+// IDE CPS Group 5 - "Shy Cat" - Arduino stepper actuation code:)
 
-  ========================================
-  STARTUP CALIBRATION
-  ========================================
-
-  On every restart, calibrate each motor
-  sequentially before normal operation.
-
-  Controls from Processing or Serial Monitor:
-
-    A = Rotate backwards continuously
-    D = Rotate forwards continuously
-    S = Stop motor
-    N = Set current position as zero and
-        continue to next motor
-
-  Once all four motors are calibrated,
-  normal operation begins automatically.
-
-  ========================================
-  NORMAL OPERATION
-  ========================================
-
-  Processing sends:
-
-    A,stepA,stepB,stepC,stepD\n
-
-  Example:
-    A,-100,-200,150,250
-
-  H = Return all motors to zero
-
-  Serial baud: 9600
-
-  ========================================
-  IMPORTANT
-  ========================================
-
-  No physical homing sensors are fitted.
-
-  Manual calibration establishes the
-  physical closed position as step zero.
-
-  Calibration has no physical travel limits.
-  Stop motors before reaching mechanical stops.
-
-  Motor power must come from an appropriately
-  rated external 5V supply, not Nano USB.
-
-  Connect external supply GND to Nano GND.
-*/
-
+//This Arduino code was written by Josh Hill with guidance, technical help and debugging from ChatGPT.
 
 #include <AccelStepper.h>
-#include <stdlib.h>
 
-
-// ==================================================
-// MOTOR CONFIGURATION
-// ==================================================
-
-const uint8_t NUM_MOTORS = 4;
-
-const uint32_t SERIAL_BAUD = 9600;
-
-
-// Motor pin order: IN1, IN3, IN2, IN4
+const int NUM_MOTORS = 4;
+const int SERIAL_BAUD = 9600;
 
 AccelStepper motors[NUM_MOTORS] = {
-
   AccelStepper(AccelStepper::FULL4WIRE, 6, 5, 3, 4),
-
   AccelStepper(AccelStepper::FULL4WIRE, 10, 8, 9, 7),
-
-  AccelStepper(AccelStepper::FULL4WIRE, 18, 20, 19, 21),
-
+  AccelStepper(AccelStepper::FULL4WIRE, 18, 11, 19, 12),
   AccelStepper(AccelStepper::FULL4WIRE, 14, 16, 15, 17)
-
 };
 
-
-// Maximum opening travel for each motor
-
-const long MAX_OPEN_STEPS[NUM_MOTORS] = {
-  1000, 1000, 1000, 1000
-};
-
-
-// Direction of opening
-
-const int8_t MOTOR_DIRECTION[NUM_MOTORS] = {
-  -1, -1, +1, +1
-};
-
-
-// ==================================================
-// NORMAL MOVEMENT SETTINGS
-// ==================================================
-
-const float MAX_SPEED_STEPS_PER_S = 250.0f;
-
-const float ACCEL_STEPS_PER_S2 = 650.0f;
-
-
-// ==================================================
-// CALIBRATION SETTINGS
-// ==================================================
-
-const float CALIBRATION_SPEED = 120.0f;
-
-
-// ==================================================
-// SERIAL TIMEOUT
-// ==================================================
-
-const unsigned long COMMAND_TIMEOUT_MS = 1500;
-
-unsigned long lastValidCommandAt = 0;
-
-
-// ==================================================
-// SERIAL BUFFER
-// ==================================================
-
-char serialBuffer[72];
-
-uint8_t serialLength = 0;
-
-
-// ==================================================
-// STARTUP CALIBRATION
-// ==================================================
-
-void calibrateSteppers() {
-
-  Serial.println(F("================================"));
-  Serial.println(F("SHY CAT - MOTOR CALIBRATION"));
-  Serial.println(F("================================"));
-
-  Serial.println(F("A = backward"));
-  Serial.println(F("D = forward"));
-  Serial.println(F("S = stop"));
-  Serial.println(F("N = next motor / set zero"));
-
-  Serial.println();
-
-
-  // Calibrate each motor sequentially
-
-  for (uint8_t i = 0; i < NUM_MOTORS; i++) {
-
-    Serial.print(F("CALIBRATING MOTOR "));
-    Serial.println(i + 1);
-
-
-    motors[i].setMaxSpeed(CALIBRATION_SPEED);
-
-    motors[i].setSpeed(0);
-
-
-    bool finished = false;
-
-
-    while (!finished) {
-
-      // Continuously run selected motor
-      // at the commanded calibration speed
-
-      motors[i].runSpeed();
-
-
-      // Read commands from Processing
-
-      if (Serial.available() > 0) {
-
-        char command = Serial.read();
-
-
-        // BACKWARDS
-
-        if (command == 'a' || command == 'A') {
-
-          motors[i].setSpeed(-CALIBRATION_SPEED);
-
-          Serial.println(F("BACKWARD"));
-        }
-
-
-        // FORWARDS
-
-        else if (command == 'd' || command == 'D') {
-
-          motors[i].setSpeed(CALIBRATION_SPEED);
-
-          Serial.println(F("FORWARD"));
-        }
-
-
-        // STOP
-
-        else if (command == 's' || command == 'S') {
-
-          motors[i].setSpeed(0);
-
-          Serial.println(F("STOPPED"));
-        }
-
-
-        // NEXT MOTOR / SET ZERO
-
-        else if (command == 'n' || command == 'N') {
-
-          // Stop movement
-          motors[i].setSpeed(0);
-
-          // Define current physical position as zero
-          motors[i].setCurrentPosition(0);
-
-          finished = true;
-
-
-          Serial.print(F("MOTOR "));
-          Serial.print(i + 1);
-          Serial.println(F(" ZERO SET"));
-
-          Serial.println();
-        }
-      }
-    }
-  }
-
-
-  Serial.println(F("================================"));
-  Serial.println(F("ALL FOUR MOTORS CALIBRATED"));
-  Serial.println(F("================================"));
-}
-
-
-// ==================================================
-// CLAMP MOTOR TARGETS
-// ==================================================
-
-long clampMotorTarget(uint8_t i, long target) {
-
-  // Limit each motor to its configured
-  // opening direction and travel
-
-  if (MOTOR_DIRECTION[i] > 0) {
-
-    if (target < 0) return 0;
-
-    if (target > MAX_OPEN_STEPS[i]) {
-      return MAX_OPEN_STEPS[i];
-    }
-
+const long MAX_OPEN_STEPS[NUM_MOTORS] = {1000, 1000, 1000, 1000};
+const int MOTOR_DIRECTION[NUM_MOTORS] = {-1, -1, 1, 1};
+
+const float MOTOR_SPEED = 250;
+const float MOTOR_ACCELERATION = 650;
+const unsigned long TIMEOUT_MS = 1500;
+
+unsigned long lastCommandTime = 0;
+
+String incomingLine = "";
+const int MAX_LINE_LENGTH = 71;
+bool lineTooLong = false;
+
+// Keep each stepper within its allowed opening range.
+long limitMotorTarget(int motorNumber, long target) {
+  if (MOTOR_DIRECTION[motorNumber] == 1) {
+    if (target < 0) target = 0;
+    if (target > MAX_OPEN_STEPS[motorNumber]) target = MAX_OPEN_STEPS[motorNumber];
   } else {
-
-    if (target > 0) return 0;
-
-    if (target < -MAX_OPEN_STEPS[i]) {
-      return -MAX_OPEN_STEPS[i];
-    }
+    if (target > 0) target = 0;
+    if (target < -MAX_OPEN_STEPS[motorNumber]) target = -MAX_OPEN_STEPS[motorNumber];
   }
-
   return target;
 }
 
-
-// ==================================================
-// CLOSE ALL MOTORS
-// ==================================================
-
 void closeAllMotors() {
-
-  for (uint8_t i = 0; i < NUM_MOTORS; i++) {
-
-    if (motors[i].targetPosition() != 0) {
-
-      motors[i].moveTo(0);
-    }
+  for (int i = 0; i < NUM_MOTORS; i++) {
+    motors[i].moveTo(0);
   }
 }
 
+// Check that a piece of text contains a whole number.
+bool isWholeNumber(String text) {
+  if (text.length() == 0) return false;
 
-// ==================================================
-// HANDLE SERIAL COMMANDS
-// ==================================================
-
-void handleCommand(char *line) {
-
-
-  // ------------------------------------------------
-  // HOME / CLOSE ALL MOTORS
-  // ------------------------------------------------
-
-  if (line[0] == 'H' && line[1] == '\0') {
-
-    closeAllMotors();
-
-    lastValidCommandAt = millis();
-
-    return;
+  int firstDigit = 0;
+  if (text.charAt(0) == '-' || text.charAt(0) == '+') {
+    firstDigit = 1;
   }
+  if (firstDigit == text.length()) return false;
 
-
-  // ------------------------------------------------
-  // NORMAL MOTOR POSITION COMMAND
-  // ------------------------------------------------
-
-  // Expected format:
-  // A,stepA,stepB,stepC,stepD
-
-  if (line[0] != 'A' || line[1] != ',') {
-
-    return;
-  }
-
-
-  long values[NUM_MOTORS];
-
-  char *cursor = line + 2;
-
-
-  for (uint8_t i = 0; i < NUM_MOTORS; i++) {
-
-    char *endPointer;
-
-    long value = strtol(
-      cursor,
-      &endPointer,
-      10
-    );
-
-
-    // Reject invalid numbers
-
-    if (cursor == endPointer) {
-
-      return;
+  for (int i = firstDigit; i < text.length(); i++) {
+    if (text.charAt(i) < '0' || text.charAt(i) > '9') {
+      return false;
     }
+  }
+  return true;
+}
 
+// Read the four requested motor positions and send them to the motors after checking that the command is valid.
+void handleCommand(String command) {
+  if (command == "H") {
+    closeAllMotors();
+    lastCommandTime = millis();
+    return;
+  }
 
-    // Check comma separators
+  if (!command.startsWith("A,")) return;
+
+  long targets[NUM_MOTORS];
+  int start = 2;  // Skip the "A,"
+
+  for (int i = 0; i < NUM_MOTORS; i++) {
+    int comma = command.indexOf(',', start);
+    String numberText;
 
     if (i < NUM_MOTORS - 1) {
-
-      if (*endPointer != ',') {
-
-        return;
-      }
-
-      cursor = endPointer + 1;
-
+      // The first three numbers must be followed by a comma.
+      if (comma == -1) return;
+      numberText = command.substring(start, comma);
+      start = comma + 1;
     } else {
+      // The fourth number must be the end of the command.
+      if (comma != -1) return;
+      numberText = command.substring(start);
+    }
 
-      // Last number must end the packet
+    if (!isWholeNumber(numberText)) return;
 
-      if (*endPointer != '\0') {
+    // Limit to a safe number of digits before converting to long.
+    // The motor targets only need values in the thousands.
+    int digitCount = numberText.length();
+    if (numberText.charAt(0) == '-' || numberText.charAt(0) == '+') {
+      digitCount--;
+    }
+    if (digitCount > 9) return;
 
-        return;
+    long requestedTarget = numberText.toInt();
+    targets[i] = limitMotorTarget(i, requestedTarget);
+  }
+
+  // Only update motors after all four numbers have been checked.
+  for (int i = 0; i < NUM_MOTORS; i++) {
+    motors[i].moveTo(targets[i]);
+  }
+
+  lastCommandTime = millis();
+}
+
+// Collect incoming characters until a complete command is received, then pass it to handleCommand().
+void readCommands() {
+  while (Serial.available() > 0) {
+    char letter = Serial.read();
+
+    if (letter == '\r') continue;
+
+    if (letter == '\n') {
+      if (!lineTooLong) handleCommand(incomingLine);
+      incomingLine = "";
+      lineTooLong = false;
+    } else if (!lineTooLong) {
+      if (incomingLine.length() < MAX_LINE_LENGTH) {
+        incomingLine += letter;
+      } else {
+        // Ignore the rest of an oversized line until its newline.
+        incomingLine = "";
+        lineTooLong = true;
       }
     }
-
-
-    // Apply physical movement limits
-
-    values[i] = clampMotorTarget(
-      i,
-      value
-    );
-  }
-
-
-  // ------------------------------------------------
-  // APPLY ALL MOTOR TARGETS
-  // ------------------------------------------------
-
-  // Only update after receiving a
-  // complete valid packet
-
-  for (uint8_t i = 0; i < NUM_MOTORS; i++) {
-
-    if (motors[i].targetPosition() != values[i]) {
-
-      motors[i].moveTo(values[i]);
-    }
-  }
-
-
-  lastValidCommandAt = millis();
-}
-
-
-// ==================================================
-// READ SERIAL LINES
-// ==================================================
-
-void readSerialLines() {
-
-  while (Serial.available() > 0) {
-
-    char c = (char)Serial.read();
-
-
-    // Ignore carriage returns
-
-    if (c == '\r') {
-
-      continue;
-    }
-
-
-    // End of command
-
-    if (c == '\n') {
-
-      serialBuffer[serialLength] = '\0';
-
-      handleCommand(serialBuffer);
-
-      serialLength = 0;
-
-    }
-
-
-    // Add character to buffer
-
-    else if (
-      serialLength < sizeof(serialBuffer) - 1
-    ) {
-
-      serialBuffer[serialLength++] = c;
-
-    }
-
-
-    // Prevent buffer overflow
-
-    else {
-
-      serialLength = 0;
-    }
   }
 }
-
-
-// ==================================================
-// SETUP
-// ==================================================
 
 void setup() {
-
   Serial.begin(SERIAL_BAUD);
 
-
-  // ----------------------------------
-  // ENABLE ALL STEPPER MOTORS
-  // ----------------------------------
-
-  for (uint8_t i = 0; i < NUM_MOTORS; i++) {
-
+  for (int i = 0; i < NUM_MOTORS; i++) {
     motors[i].enableOutputs();
-
-    // Temporary position before calibration
-
     motors[i].setCurrentPosition(0);
   }
 
-
-  // ----------------------------------
-  // MANUAL CALIBRATION
-  // ----------------------------------
-
-  // This blocks normal operation until
-  // all four motors have been calibrated.
-
-  calibrateSteppers();
-
-
-  // ----------------------------------
-  // RESTORE NORMAL MOVEMENT SETTINGS
-  // ----------------------------------
-
-  for (uint8_t i = 0; i < NUM_MOTORS; i++) {
-
-    motors[i].setMaxSpeed(
-      MAX_SPEED_STEPS_PER_S
-    );
-
-    motors[i].setAcceleration(
-      ACCEL_STEPS_PER_S2
-    );
-
+  for (int i = 0; i < NUM_MOTORS; i++) {
+    motors[i].setMaxSpeed(MOTOR_SPEED);
+    motors[i].setAcceleration(MOTOR_ACCELERATION);
     motors[i].moveTo(0);
   }
 
-
-  // ----------------------------------
-  // CLEAR CALIBRATION SERIAL INPUT
-  // ----------------------------------
-
-  while (Serial.available() > 0) {
-
-    Serial.read();
-  }
-
-  serialLength = 0;
-
-
-  // Start timeout timer
-
-  lastValidCommandAt = millis();
-
-
-  Serial.println(F("================================"));
-  Serial.println(F("SHY CAT CONTROLLER READY"));
-  Serial.println(F("NORMAL OPERATION ACTIVE"));
-  Serial.println(F("================================"));
+  incomingLine = "";
+  lineTooLong = false;
+  lastCommandTime = millis();
+  Serial.println("SHY CAT READY");
 }
 
-
-// ==================================================
-// MAIN LOOP
-// ==================================================
-
 void loop() {
+  readCommands();
 
-
-  // ----------------------------------
-  // READ PROCESSING COMMANDS
-  // ----------------------------------
-
-  readSerialLines();
-  // ----------------------------------
-  // CONNECTION TIMEOUT
-  // ----------------------------------
-
-  // If Processing stops sending commands,
-  // automatically return all motors to zero.
-
-  if (
-    millis() - lastValidCommandAt >
-    COMMAND_TIMEOUT_MS
-  ) {
-
+  if (millis() - lastCommandTime > TIMEOUT_MS) {
     closeAllMotors();
   }
 
-
-  // ----------------------------------
-  // RUN ALL FOUR MOTORS
-  // ----------------------------------
-
-  // AccelStepper requires run() to be
-  // called continuously for every motor.
-  // This allows simultaneous movement.
-
-  for (uint8_t i = 0; i < NUM_MOTORS; i++) {
-
+  // run() must be called repeatedly for smooth stepper movement.
+  for (int i = 0; i < NUM_MOTORS; i++) {
     motors[i].run();
   }
 }
