@@ -1,6 +1,7 @@
 ### OURREAD ME FILE!
 
 Concept Development:
+
 ___ is an interactive sculpture that mirrors the participant's movement. A blue organza core is suspended by rotating arms, creating organic movement responding to the participant's pace and body position.
 
 ##Final Electronic Schematic 
