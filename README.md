@@ -2,7 +2,7 @@
 
 Group members: Saskia Lampe, Katie Han and Josh Hill
 
-<span style="background-color:#ffd4a8">**sculpture2 image here</span>**
+![sculpture2](IMAGES/sculpture2.jpeg)
 
 ## Concept:
 
