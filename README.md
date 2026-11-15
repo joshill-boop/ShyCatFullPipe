@@ -53,7 +53,8 @@ The mechanical assembly we decided to use to make gear up the stepper motors to 
 - Slow, gentle and considered movements means low threat, high engagement.
 
 - This was the training program for Wekinator.
-![Wekinator](IMAGES/Wekinator)
+  
+![Wekinator](IMAGES/Wekinator.png)
 
 ### `processing_ShyCatFullPipe.pde`
 
