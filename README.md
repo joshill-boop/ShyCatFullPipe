@@ -13,6 +13,8 @@ Our CPS submission is an interactive sculpture that acts somewhat abstractly lik
 
 A blue organza fabric core is suspended by four rotating arms, creating organic movement responding to the participant's pace and body position. This design and interaction draws on the practice of tai chi: a still center, a slow-moving periphery, and a force that comes from softness rather than sudden motion.
 
+We created multiple prototypes, experimenting with a range of textiles, before deciding on the suspended organza form.
+
 ![prototypes](IMAGES/prototypes.jpg)
 
 ## Electronic Schematic
