@@ -6,9 +6,9 @@ Group members: Saskia Lampe, Katie Han and Josh Hill
 
 ## Concept:
 
-Our CPS submission is an interactive sculpture that acts somewhat abstractly like a shy cat. The person interracting with it needs first to let the sculpture build trust with you by moving slowly, and then eventually when enough trust is built, it begins to mirror the participant's movement (X and Y of each wrist correlate to one stepper each). If at any point you move too quickly too much, the sculpture will lose trust in you, close up, and you will have to start the process again.
+Our CPS submission is an interactive sculpture that acts somewhat abstractly like a shy cat. The user must first 'build trust' with the sculpture by moving slowly, and eventually, when enough trust is built, it begins to mirror the participant's movement (with the X and Y positions of each wrist mapping to a respective stepper). If at any point you move too quickly too much, the sculpture will lose trust in you, close up, and you will have to start the process again.
 
-A blue organza fabric core is suspended by four rotating arms, creating organic movement responding to the participant's pace and body position. This design and interaction draws on the practice of tai chi: a still center, a slow-moving periphery, and a force that comes from softness rather than sudden motion.
+A square of organza fabric is suspended by four inwardly bent spokes atop stepper motors, creating organic movement responding to the participant's pace and body position. This design and interaction draws on the practice of tai chi: a still center, a slow-moving periphery, and a force that comes from softness rather than sudden motion.
 
 ## Electronic Schematic
 
