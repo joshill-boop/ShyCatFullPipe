@@ -30,7 +30,7 @@ The mechanical assembly we decided to use to make gear up the stepper motors to 
 
 ## Software Design
 
-![20261115_CPS_Ai_SoftwareDiagram_REV2.png](/Users/joshhill/Documents/GitHub/ShyCatFullPipe/IMAGES/20261115_CPS_Ai_SoftwareDiagram_REV2.png)
+![20261115_CPS_Ai_SoftwareDiagram_REV2.png](ShyCatFullPipe/IMAGES/)
 
 ### `python_ShyCatFullPipe.py`
 
