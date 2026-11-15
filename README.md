@@ -54,7 +54,7 @@ This code was written by Josh Hill with **a lot** guidance, technical help and d
 
 - Slow, gentle and considered movements means low threat, high engagement.
 
-- Threat and Engagement are two different regression models.
+- Threat and Engagement are two different regression models. Regression was chosen allow for a range of threats and engagements; not just off and on. 
 
 ![Wekinator](IMAGES/Wekinator.png)
 
@@ -141,3 +141,7 @@ This may allow for us to have an almost instantaneous feedback to the participan
 #### Tracking
 
 The system only mimics both wrists X and Y. Whilst interaction is still enjoyable, more time may need to be spent on dialing in the interaction language, bringing it probably more in line with the Tai Chi aspect.
+
+#### Machine Learning
+
+The training that was done is on a small number of people and as such, lacks broader realism. The way one person would move in a calm or agitated way is different to another. Adding more people to the data would help make the model more capable at recognising these altered states in a wider range of participants.
