@@ -46,14 +46,16 @@ The mechanical assembly we decided to use to make gear up the stepper motors to 
 
 - Sends 12 bits of information to Wekinator and to Processing.
 
+This code was written by Josh Hill with **a lot** guidance, technical help and debugging from ChatGPT.
+
 ### `wek_ShyCatFullPipe.wekproj`
 
 - Fast, erratic and "aggressive" movements (as communicated by the 12 Python outputs) means low Engagement high Threat.
 
 - Slow, gentle and considered movements means low threat, high engagement.
 
-- This was the training program for Wekinator.
-  
+- Threat and Engagement are two different regression models.
+
 ![Wekinator](IMAGES/Wekinator.png)
 
 ### `processing_ShyCatFullPipe.pde`
@@ -74,6 +76,8 @@ The mechanical assembly we decided to use to make gear up the stepper motors to 
 
 - Handles keyboard testing, manual motor homing and communication with the Arduino.
 
+This code was written by Josh Hill with **a lot** guidance, technical help and debugging from ChatGPT.
+
 ### `arduino_ShyCatFulPipe.ino`
 
 - Receives four target positions from Processing via OSC.
@@ -83,6 +87,8 @@ The mechanical assembly we decided to use to make gear up the stepper motors to 
 - Uses the <AccelStepper.h> library to control motor speed, acceleration and position.
 
 - Allows multiple motors to move independently and simultaneously (this is why AccelStepper was used and not just Stepper).
+
+This code was written by Josh Hill with guidance, technical help and debugging from ChatGPT.
 
 ### How to run
 
