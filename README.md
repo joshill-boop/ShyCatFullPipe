@@ -5,6 +5,9 @@ Group members: Saskia Lampe, Katie Han and Josh Hill
 ![sculpture2](IMAGES/sculpture2.jpeg)
 ![sculpture3](IMAGES/sculpture3.JPG)
 
+<img src="sculpture3.JPG" alt="sculpture3" width="100"/>
+
+
 ## Concept:
 
 Our CPS submission is an interactive sculpture that acts somewhat abstractly like a shy cat. The person interracting with it needs first to let the sculpture build trust with you by moving slowly, and then eventually when enough trust is built, it begins to mirror the participant's movement (X and Y of each wrist correlate to one stepper each). If at any point you move too quickly too much, the sculpture will lose trust in you, close up, and you will have to start the process again.
