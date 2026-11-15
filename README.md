@@ -30,7 +30,7 @@ The mechanical assembly we decided to use to make gear up the stepper motors to 
 
 ## Software Design
 
-![20261115_CPS_Ai_SoftwareDiagram_REV2](ShyCatFullPipe/IMAGES/)
+![20261115_CPS_Ai_SoftwareDiagram_REV2](IMAGES/20261115_CPS_Ai_SoftwareDiagram_REV2.png)
 
 ### `python_ShyCatFullPipe.py`
 
@@ -53,8 +53,7 @@ The mechanical assembly we decided to use to make gear up the stepper motors to 
 - Slow, gentle and considered movements means low threat, high engagement.
 
 - This was the training program for Wekinator.
-
-<img title="" src="/Users/joshhill/Documents/GitHub/ShyCatFullPipe/IMAGES/Wekinator.png" alt="Wekinator.png" width="801" data-align="inline" />
+![Wekinator](IMAGES/Wekinator)
 
 ### `processing_ShyCatFullPipe.pde`
 
