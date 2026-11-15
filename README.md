@@ -2,7 +2,7 @@
 
 Group members: Saskia Lampe, Katie Han and Josh Hill
 
-![sculpture2](ShyCatFullPipe/IMAGES)
+<span style="background-color:#ffd4a8">**sculpture2 image here</span>**
 
 ## Concept:
 
@@ -10,7 +10,17 @@ Our CPS submission is an interactive sculpture that acts somewhat abstractly lik
 
 A blue organza fabric core is suspended by four rotating arms, creating organic movement responding to the participant's pace and body position. This design and interaction draws on the practice of tai chi: a still center, a slow-moving periphery, and a force that comes from softness rather than sudden motion.
 
-Components:
+## Electronic Schematic
+
+<img width="5284" height="12136" alt="FinalSchematic" src="https://github.com/user-attachments/assets/7dd8a95d-6ec2-4c3a-9c24-0dbda79217f4" />
+
+## Mechanical Assembly
+
+<img width="632" height="589" alt="Screenshot 2026-11-12 at 3 14 34 PM" src="https://github.com/user-attachments/assets/27c1d15f-fc3e-4ea1-a6d1-86c5d14b506b" />
+
+The mechanical assembly we decided to use to make gear up the stepper motors to get faster speeds out of them. This was important for our startle response in the sculpture to feel fast enough that it was scared and not just returning to home.
+
+**Components:**
 
 - 4 stepper motors
 - acrylic rods
@@ -18,9 +28,22 @@ Components:
 - base frame made of 80 20
 - Arduino
 
-##Final Electronic Schematic 
-<img width="5284" height="12136" alt="FinalSchematic" src="https://github.com/user-attachments/assets/7dd8a95d-6ec2-4c3a-9c24-0dbda79217f4" />
+## Software Design
 
-## Mechanical Assembly
+![20261115_CPS_Ai_SoftwareDiagram_REV2.png](/Users/joshhill/Documents/GitHub/ShyCatFullPipe/IMAGES/20261115_CPS_Ai_SoftwareDiagram_REV2.png)
 
-<img width="632" height="589" alt="Screenshot 2026-11-12 at 3 14 34 PM" src="https://github.com/user-attachments/assets/27c1d15f-fc3e-4ea1-a6d1-86c5d14b506b" />
+### `python_ShyCatFullPipe.py`
+
+aaa
+
+### `wek_ShyCatFullPipe.wekproj`
+
+sss
+
+### `processing_ShyCatFullPipe.pde`
+
+ddd
+
+### `arduino_ShyCatFulPipe.ino`
+
+dsbjibvdsjvbs
