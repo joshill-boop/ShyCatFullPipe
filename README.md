@@ -2,7 +2,7 @@
 
 Group members: Saskia Lampe, Katie Han and Josh Hill
 
-ShyCatFullPipe/IMAGES/sculpture2
+![sculpture2](ShyCatFullPipe/IMAGES)
 
 ## Concept:
 
