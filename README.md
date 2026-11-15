@@ -5,7 +5,6 @@ Group members: Saskia Lampe, Katie Han and Josh Hill
 ![sculpture2](IMAGES/sculpture2.jpeg)
 ![sculpture3](IMAGES/sculpture3.JPG)
 
-<img src="sculpture3.JPG" alt="sculpture3" width="100"/>
 
 
 ## Concept:
