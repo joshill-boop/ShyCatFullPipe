@@ -13,6 +13,7 @@ Group members: Saskia Lampe, Katie Han and Josh Hill
 Our CPS submission is an interactive sculpture that behaves similarly to a shy cat. To interact, the user must 'build trust' with the sculpture by moving slowly, and 'Shy Cat' will gradually begin to respond. Eventually, when enough trust has been built, the sculpture begins to mirror the participant's movement. If at any point, the participant moves too harshly, the sculpture will lose trust, and close up.
 
 <img width="1621" height="418" alt="prototypes" src="https://github.com/user-attachments/assets/462f4826-898a-4f08-b7aa-dc1174a00203" />
+
 ##### *[Fig.2 ] 'Shy Cat' Material Testing and Iteration*
 
 &nbsp;
