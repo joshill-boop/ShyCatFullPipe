@@ -44,19 +44,13 @@ Both the design and interaction draw on the practice of tai chi: a still center,
 
 ## Mechanical Assembly
 
-
-
-
 <img width="500" alt="Screenshot 2026-11-12 at 3 14 34 PM" src="https://github.com/user-attachments/assets/27c1d15f-fc3e-4ea1-a6d1-86c5d14b506b" />
 
 ##### *[Fig. ] The Mechanical Assembly*
 
 &nbsp;
 
-Due to the 28BYJ-48's relatively slow RPM (topping at at 16rpm for our application), we geared up mechanical assembly 
-
-
-This was important for our startle response in the sculpture to feel fast enough that it was scared and not just returning to home.
+Due to the 28BYJ-48's relatively slow RPM (topping at at 16rpm for our application), we decided to gear up the final assembly. This was important for 'Shy Cat's' startle response, as it gave us greater speed flexibility despite the slow rotation of our steppers. 
 
 ## Software Design
 
@@ -89,7 +83,7 @@ This code was written by Josh Hill with **a lot** guidance, technical help and d
 
 <img width="500" alt="Wekinator" src="https://github.com/user-attachments/assets/3e3099e2-ead0-42f1-b454-9b773be85d05"/>
 
-##### *[Fig.  ] Wekinator Interface *  
+##### *[Fig.  ] Wekinator Interface*  
 
 ### `processing_ShyCatFullPipe.pde`
 
@@ -178,9 +172,7 @@ python python_ShyCatFullPipe.py
 9. Enjoy! Note: the Wekinator is trained with VERY slow movement, so if you want some faster movement to be less scary, add more training to it.
 
 ## System Limitations
-
 ---
-
 ###  Homing of the steppers
 
 ##### At the moment the steppers are manually homed at the beginning of each use. This is fine whilst the torque on the motors is low but with different or larger fabrics this may cause skipping of steps and the home location to be lost. This could be fixed with some sort of hard wired switch in the system to allow accurate homing during normal operation.
