@@ -2,8 +2,8 @@
 
 Group members: Saskia Lampe, Katie Han and Josh Hill
 
-![sculpture2](IMAGES/sculpture2.jpeg)
-<img width="1000" alt="sculpture3" src="https://github.com/user-attachments/assets/042e10a4-74f8-4dc5-a36f-ffef54762820" />
+<img width="667" height="472" alt="sculpture2" src="https://github.com/user-attachments/assets/51e67528-899a-4387-8a2e-334c49f1c1d2" />
+<img width="667" alt="sculpture3" src="https://github.com/user-attachments/assets/042e10a4-74f8-4dc5-a36f-ffef54762820" />
 ##### *[Fig.1 & 1.5 ] 'Shy Cat' Interactive Sculpture*
 
 &nbsp;
