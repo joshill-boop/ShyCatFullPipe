@@ -3,14 +3,17 @@
 Group members: Saskia Lampe, Katie Han and Josh Hill
 
 ![sculpture2](IMAGES/sculpture2.jpeg)
-##### *[Fig. 1 ] 'Shy Cat' Interactive Sculpture*
+<img width="1000" alt="sculpture3" src="https://github.com/user-attachments/assets/042e10a4-74f8-4dc5-a36f-ffef54762820" />
+##### *[Fig.1 & 1.5 ] 'Shy Cat' Interactive Sculpture*
 
 &nbsp;
 
 ## Concept:
 
-Our CPS submission is an interactive sculpture that behaves similarly to a shy cat. To interact, the user must 'build trust' with the sculpture by moving slowly, and 'Shy Cat' will gradually begin to respond. Eventually, when enough trust has been built, the sculpture begins to mirror the participant's movement. If at any point, the participant moves too harshly, the sculpture will lose trust, close up.
+Our CPS submission is an interactive sculpture that behaves similarly to a shy cat. To interact, the user must 'build trust' with the sculpture by moving slowly, and 'Shy Cat' will gradually begin to respond. Eventually, when enough trust has been built, the sculpture begins to mirror the participant's movement. If at any point, the participant moves too harshly, the sculpture will lose trust, and close up.
 
+<img width="1621" height="418" alt="prototypes" src="https://github.com/user-attachments/assets/462f4826-898a-4f08-b7aa-dc1174a00203" />
+##### *[Fig.2] 'Shy Cat' Material Testing and Iteration*
 
 
 ## Aesthetic and Conceptual Threads:
@@ -38,7 +41,7 @@ Both the design and interaction draw on the practice of tai chi: a still center,
 
 <img width="500" alt="FinalSchematic" src="https://github.com/user-attachments/assets/7dd8a95d-6ec2-4c3a-9c24-0dbda79217f4" />
 
-##### *[Fig.2 ] Electronic Schematic*
+##### *[Fig.3 ] Electronic Schematic*
 
 
 
@@ -46,7 +49,7 @@ Both the design and interaction draw on the practice of tai chi: a still center,
 
 <img width="500" alt="Screenshot 2026-11-12 at 3 14 34 PM" src="https://github.com/user-attachments/assets/27c1d15f-fc3e-4ea1-a6d1-86c5d14b506b" />
 
-##### *[Fig.3 ] The Mechanical Assembly*
+##### *[Fig.4 ] The Mechanical Assembly*
 
 &nbsp;
 
@@ -55,7 +58,7 @@ Due to the 28BYJ-48's relatively slow RPM (topping at at 16rpm for our applicati
 ## Software Design
 
 ![20261115_CPS_Ai_SoftwareDiagram_REV2](IMAGES/20261115_CPS_Ai_SoftwareDiagram_REV2.png)
-##### *[Fig.4 ] 'Shy Cat' Software Pipe Line*
+##### *[Fig.5 ] 'Shy Cat' Software Pipe Line*
 
 ### `python_ShyCatFullPipe.py`
 
@@ -83,7 +86,7 @@ This code was written by Josh Hill with **a lot** guidance, technical help and d
 
 <img width="500" alt="Wekinator" src="https://github.com/user-attachments/assets/3e3099e2-ead0-42f1-b454-9b773be85d05"/>
 
-##### *[Fig.5  ] Wekinator Interface*  
+##### *[Fig.6] Wekinator Interface*  
 
 ### `processing_ShyCatFullPipe.pde`
 
