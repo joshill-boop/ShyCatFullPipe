@@ -38,7 +38,7 @@ Both the design and interaction draw on the practice of tai chi: a still center,
 
 <img width="500" alt="FinalSchematic" src="https://github.com/user-attachments/assets/7dd8a95d-6ec2-4c3a-9c24-0dbda79217f4" />
 
-##### *[Fig. ] Electronic Schematic*
+##### *[Fig.2 ] Electronic Schematic*
 
 
 
@@ -46,7 +46,7 @@ Both the design and interaction draw on the practice of tai chi: a still center,
 
 <img width="500" alt="Screenshot 2026-11-12 at 3 14 34 PM" src="https://github.com/user-attachments/assets/27c1d15f-fc3e-4ea1-a6d1-86c5d14b506b" />
 
-##### *[Fig. ] The Mechanical Assembly*
+##### *[Fig.3 ] The Mechanical Assembly*
 
 &nbsp;
 
@@ -55,7 +55,7 @@ Due to the 28BYJ-48's relatively slow RPM (topping at at 16rpm for our applicati
 ## Software Design
 
 ![20261115_CPS_Ai_SoftwareDiagram_REV2](IMAGES/20261115_CPS_Ai_SoftwareDiagram_REV2.png)
-##### *[Fig.  ] 'Shy Cat' Software Pipe Line*
+##### *[Fig.4 ] 'Shy Cat' Software Pipe Line*
 
 ### `python_ShyCatFullPipe.py`
 
@@ -83,7 +83,7 @@ This code was written by Josh Hill with **a lot** guidance, technical help and d
 
 <img width="500" alt="Wekinator" src="https://github.com/user-attachments/assets/3e3099e2-ead0-42f1-b454-9b773be85d05"/>
 
-##### *[Fig.  ] Wekinator Interface*  
+##### *[Fig.5  ] Wekinator Interface*  
 
 ### `processing_ShyCatFullPipe.pde`
 
