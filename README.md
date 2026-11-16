@@ -88,6 +88,7 @@ This code was written by Josh Hill with **a lot** guidance, technical help and d
 - Threat and Engagement are two different regression models. Regression was chosen allow for a range of threats and engagements; not just off and on. 
 
 <img width="500" alt="Wekinator" src="https://github.com/user-attachments/assets/3e3099e2-ead0-42f1-b454-9b773be85d05"/>
+
 ##### *[Fig.  ] Wekinator Interface *  
 
 ### `processing_ShyCatFullPipe.pde`
