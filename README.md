@@ -53,11 +53,12 @@ Both the design and interaction draw on the practice of tai chi: a still center,
 
 <img width="500" alt="Screenshot 2026-11-12 at 3 14 34 PM" src="https://github.com/user-attachments/assets/27c1d15f-fc3e-4ea1-a6d1-86c5d14b506b" />
 
-##### *[Fig.4 ] The Mechanical Assembly*
+##### *[Fig.4 ] The Mechanical Assembly, 28BYJ-48 model made by Jeonga Lee*
 
 &nbsp;
 
 Due to the 28BYJ-48's relatively slow RPM (topping at at 16rpm for our application), we decided to gear up the final assembly. This was important for 'Shy Cat's' startle response, as it gave us greater speed flexibility despite the slow rotation of our steppers. 
+
 
 ## Software Design
 
