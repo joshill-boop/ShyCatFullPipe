@@ -3,34 +3,65 @@
 Group members: Saskia Lampe, Katie Han and Josh Hill
 
 ![sculpture2](IMAGES/sculpture2.jpeg)
+##### *[Fig. 1 ] 'Shy Cat' Interactive Sculpture*
+
+&nbsp;
 
 ## Concept:
 
-Our CPS submission is an interactive sculpture that acts somewhat abstractly like a shy cat. The user must first 'build trust' with the sculpture by moving slowly, and eventually, when enough trust is built, it begins to mirror the participant's movement (with the X and Y positions of each wrist mapping to a respective stepper). If at any point you move too quickly too much, the sculpture will lose trust in you, close up, and you will have to start the process again.
+Our CPS submission is an interactive sculpture that behaves similarly to a shy cat. To interact, the user must 'build trust' with the sculpture by moving slowly, and 'Shy Cat' will gradually begin to respond. Eventually, when enough trust has been built, the sculpture begins to mirror the participant's movement. If at any point, the participant moves too harshly, the sculpture will lose trust, close up.
 
-A square of organza fabric is suspended by four inwardly bent spokes atop stepper motors, creating organic movement responding to the participant's pace and body position. This design and interaction draws on the practice of tai chi: a still center, a slow-moving periphery, and a force that comes from softness rather than sudden motion.
 
+
+## Aesthetic and Conceptual Threads:
+
+Shy Cat is built from a square of organza fabric suspended between curved spokes atop four stepper motors. As the user moves, the motors gently begin to correspond to the participant's pace and body position. 
+
+Both the design and interaction draw on the practice of tai chi: a still center, a slow-moving periphery, and a force that comes from softness rather than sudden motion.
+
+---
+## Components and Parts:
+
+|Part |Specification | Quantity|
+|:---|:---|:---|
+|Arduino Nano Every|  |1
+|Stepper Motors | 28BYJ-48 | 4 
+|Acrylic rods | 5mm| 4 
+|Organza Fabric| approx. 30x30mm | 1 
+|T-slot Extruded Aluminium| 590mm | 2 
+|M3 Bolts| 12mm| 8 |
+|M3 Nuts | | 16 |
+|M3 Bolts| 8mm| 8 |
+&nbsp;
 ## Electronic Schematic
 
-<img width="5284" height="12136" alt="FinalSchematic" src="https://github.com/user-attachments/assets/7dd8a95d-6ec2-4c3a-9c24-0dbda79217f4" />
+
+<img width="500" alt="FinalSchematic" src="https://github.com/user-attachments/assets/7dd8a95d-6ec2-4c3a-9c24-0dbda79217f4" />
+
+##### *[Fig. ] Electronic Schematic*
+
+
 
 ## Mechanical Assembly
 
-<img width="632" height="589" alt="Screenshot 2026-11-12 at 3 14 34 PM" src="https://github.com/user-attachments/assets/27c1d15f-fc3e-4ea1-a6d1-86c5d14b506b" />
 
-The mechanical assembly we decided to use to make gear up the stepper motors to get faster speeds out of them. This was important for our startle response in the sculpture to feel fast enough that it was scared and not just returning to home.
 
-**Components:**
 
-- 4 stepper motors
-- acrylic rods
-- blue organza
-- base frame made of 80 20
-- Arduino
+<img width="500" alt="Screenshot 2026-11-12 at 3 14 34 PM" src="https://github.com/user-attachments/assets/27c1d15f-fc3e-4ea1-a6d1-86c5d14b506b" />
+
+##### *[Fig. ] The Mechanical Assembly*
+
+&nbsp;
+
+Due to the 28BYJ-48's relatively slow RPM (topping at at 16rpm for our application), we geared up mechanical assembly 
+
+
+This was important for our startle response in the sculpture to feel fast enough that it was scared and not just returning to home.
 
 ## Software Design
 
 ![20261115_CPS_Ai_SoftwareDiagram_REV2](IMAGES/20261115_CPS_Ai_SoftwareDiagram_REV2.png)
+##### *[Fig.  ] 'Shy Cat' Software Pipe Line*
 
 ### `python_ShyCatFullPipe.py`
 
@@ -56,7 +87,9 @@ This code was written by Josh Hill with **a lot** guidance, technical help and d
 
 - Threat and Engagement are two different regression models. Regression was chosen allow for a range of threats and engagements; not just off and on. 
 
-![Wekinator](IMAGES/Wekinator.png)
+<img width="500" alt="Wekinator" src="https://github.com/user-attachments/assets/3e3099e2-ead0-42f1-b454-9b773be85d05"/>
+
+##### *[Fig.  ] Wekinator Interface *  
 
 ### `processing_ShyCatFullPipe.pde`
 
@@ -94,21 +127,39 @@ This code was written by Josh Hill with guidance, technical help and debugging f
 
 This code has only been tested to work on Mac.
 
-1. Make a local copy of the entire folder ShyCatFullPipe.
+1. Make a local copy of the directory `ShyCatFullPipe` .
 
-2. In `ShyCatFullPipe` create a Python virtual environment in that folder using: `python -m venv .venv` and then activate using: `source .venv/bin/activate`.
+2. Within `ShyCatFullPipe`, create a Python virtual environment:
 
-3. Install the dependencies using: `python -m pip install -r requirements.txt`
+```
+python -m venv .venv
+```
+activate the environment: 
+```
+source .venv/bin/activate
+```
 
-4. Navigate to the Python folder, and then run `python_ShyCatFullPipe.py` with: `python python_ShyCatFullPipe.py`. The camera should appear.
+3. Install the dependencies using: 
+
+```
+python -m pip install -r requirements.txt
+```
+
+4. Navigate to the Python folder, and run
+
+```
+python python_ShyCatFullPipe.py
+``` 
+ 
+ The camera should appear.
 
 5. Start Wekinator and open `wek_ShyCatFullPipe.wekproj` and run. You should see that the values of threat and engagement change depending on your movement.
 
 6. Ensure `arduino_ShyCatFullPipe.ino` is uploaded to your controller with the system working correctly. (refer to the unit tests if it isnt.) and that the arduino is connected to the computer and the power board is connected to the power supply.
 
-7. Run `processing_ShyCatFullPipe.pde`. On first run you will need to consult the list of ports it initally prints in the Processing terminal, find the one your board is and change it in the Processing code (line 11). The script will wait for you to home each stepper before running the live part.
+7. Run `processing_ShyCatFullPipe.pde`. On first run you will need to consult the list of ports initally printed in the Processing terminal. Find which port your arduino board communicates through and change it in the Processing code (line 11). The script will wait for you to home each stepper before running the live part.
 
-   Homing Procedure:
+##   Homing Procedure:
 
    1. Press B to connect to Arduino.
 
@@ -126,22 +177,25 @@ This code has only been tested to work on Mac.
 
 9. Enjoy! Note: the Wekinator is trained with VERY slow movement, so if you want some faster movement to be less scary, add more training to it.
 
-### System Limitations
+## System Limitations
 
-#### Homing of the steppers
+---
 
-At the moment the steppers are manually homed at the beginning of each use. This is fine whilst the torque on the motors is low but with different or larger fabrics this may cause skipping of steps and the home location to be lost. This could be fixed with some sort of hard wired switch in the system to allow accurate homing during normal operation.
+###  Homing of the steppers
 
-#### Power constraints and stepper speeds
+##### At the moment the steppers are manually homed at the beginning of each use. This is fine whilst the torque on the motors is low but with different or larger fabrics this may cause skipping of steps and the home location to be lost. This could be fixed with some sort of hard wired switch in the system to allow accurate homing during normal operation.
 
-5V being the power budget limited our ability to make something move fast and accurately and with high torque. We would consider using larger stepper motors like NEMA 17s if we had no power constraints. 
+---
 
-This may allow for us to have an almost instantaneous feedback to the participant.
+### Power constraints and stepper speeds
 
-#### Tracking
+##### 5V being the power budget limited our ability to make something move fast and accurately and with high torque. We would consider using larger stepper motors like NEMA 17s if we had no power constraints. 
+##### This may allow for us to have an almost instantaneous feedback to the participant.
+---
+### Tracking
 
-The system only mimics both wrists X and Y. Whilst interaction is still enjoyable, more time may need to be spent on dialing in the interaction language, bringing it probably more in line with the Tai Chi aspect.
+##### The system only mimics both wrists X and Y. Whilst interaction is still enjoyable, more time may need to be spent on dialing in the interaction language, bringing it probably more in line with the Tai Chi aspect.
+---
+### Machine Learning
 
-#### Machine Learning
-
-The training that was done is on a small number of people and as such, lacks broader realism. The way one person would move in a calm or agitated way is different to another. Adding more people to the data would help make the model more capable at recognising these altered states in a wider range of participants.
+##### The training that was done is on a small number of people and as such, lacks broader realism. The way one person would move in a calm or agitated way is different to another. Adding more people to the data would help make the model more capable at recognising these altered states in a wider range of participants.
