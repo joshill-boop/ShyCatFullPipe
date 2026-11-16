@@ -35,8 +35,9 @@ Both the design and interaction draw on the practice of tai chi: a still center,
 |Organza Fabric| approx. 30x30mm | 1 
 |T-slot Extruded Aluminium| 590mm | 2 
 |M3 Bolts| 12mm| 8 |
-|M3 Nuts | | 16 |
 |M3 Bolts| 8mm| 8 |
+|M3 Nuts | | 16 |
+
 &nbsp;
 ## Electronic Schematic
 
