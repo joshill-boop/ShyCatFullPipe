@@ -15,6 +15,7 @@ Our CPS submission is an interactive sculpture that behaves similarly to a shy c
 <img width="1621" height="418" alt="prototypes" src="https://github.com/user-attachments/assets/462f4826-898a-4f08-b7aa-dc1174a00203" />
 ##### *[Fig.2 ] 'Shy Cat' Material Testing and Iteration*
 
+&nbsp;
 
 ## Aesthetic and Conceptual Threads:
 
